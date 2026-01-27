@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react"; // Adicionado useRef
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase"; 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bell, Flame, Bike, CheckCircle, RefreshCw, Archive, Flag } from "lucide-react";
+import { Bell, Flame, Bike, CheckCircle, RefreshCw, Archive, Flag, Printer } from "lucide-react"; // Adicionado Printer
 
 export default function DashboardCozinha() {
   const router = useRouter();
@@ -17,10 +17,53 @@ export default function DashboardCozinha() {
   const [loading, setLoading] = useState(true);
   const [pizzariaId, setPizzariaId] = useState<string | null>(null);
 
+  // Referência para evitar múltiplas impressões automáticas do mesmo pedido
+  const pedidosImpressos = useRef<Set<number>>(new Set());
+
   // Controle do Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<number | null>(null);
   const [motoboyEscolhido, setMotoboyEscolhido] = useState("");
+
+  // --- FUNÇÃO DE IMPRESSÃO TÉRMICA (80mm) ---
+  const imprimirPedido = useCallback((pedido: any) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const itensHtml = pedido.items.map((item: any) => `
+        <tr>
+            <td style="vertical-align: top; padding: 2px;">${item.qtd}x</td>
+            <td style="vertical-align: top; padding: 2px;">${item.name}</td>
+        </tr>
+    `).join('');
+
+    const htmlContent = `
+      <html>
+        <body style="font-family: 'Courier New', monospace; width: 80mm; font-size: 13px; margin: 0; padding: 10px;">
+          <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">
+            <b style="font-size: 16px;">COZINHA - #${pedido.id}</b><br/>
+            ${new Date().toLocaleString('pt-BR')}
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            ${itensHtml}
+          </table>
+          <div style="border-top: 1px dashed #000; margin-top: 10px; padding-top: 5px;">
+            <b>Cliente:</b> ${pedido.customer_name}<br/>
+            <b>Tipo:</b> ${pedido.status === 'producao' ? 'VENDA BALCÃO' : 'DELIVERY'}
+          </div>
+        </body>
+      </html>
+    `;
+    doc.open(); doc.write(htmlContent); doc.close();
+    iframe.onload = () => {
+      iframe.contentWindow?.print();
+      pedidosImpressos.current.add(pedido.id);
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    };
+  }, []);
 
   // --- 0. VERIFICAÇÃO DE LOGIN ---
   useEffect(() => {
@@ -33,12 +76,9 @@ export default function DashboardCozinha() {
   }, [router]);
 
   // --- 1. CARREGAR DADOS ---
-  // Usamos useCallback para poder colocar essa função nas dependências do useEffect sem loop infinito
   const carregarDados = useCallback(async () => {
     if (!pizzariaId) return;
 
-    // A. Busca Pedidos
-    // IMPORTANTE: Certifique-se que as tabelas 'itens_venda' e 'cardapio' estão conectadas no Supabase (Foreign Keys)
     const { data: dataVendas, error: errorVendas } = await supabase
       .from("vendas")
       .select(`
@@ -50,55 +90,53 @@ export default function DashboardCozinha() {
         )
       `)
       .eq("pizzaria_id", pizzariaId)
-      .neq("status", "Arquivado") // Não traz os arquivados para não pesar a busca
+      .neq("status", "Arquivado")
       .order("created_at", { ascending: true });
 
     if (errorVendas) {
-      console.error("ERRO CRÍTICO AO BUSCAR VENDAS:", errorVendas.message, errorVendas.details);
+      console.error("ERRO AO BUSCAR VENDAS:", errorVendas.message);
     }
 
-    // B. Busca Motoboys
-    const { data: dataDrivers, error: errorDrivers } = await supabase
+    const { data: dataDrivers } = await supabase
       .from("drivers")
       .select("*")
       .eq("status", "Ativo");
-      // .eq("pizzaria_id", pizzariaId); // Descomente se seus drivers forem por pizzaria
 
-    if (errorDrivers) {
-      console.error("Erro ao buscar motoboys:", errorDrivers.message);
-    }
-
-    // Formata os dados para o Front-end
     const vendasFormatadas = (dataVendas || []).map((v: any) => ({
       id: v.id,
-      customer_name: v.cliente || "Cliente Balcão",
+      customer_name: v.cliente_nome || v.cliente || "Cliente Balcão",
       created_at: v.created_at,
       status: v.status || "Pendente",
       driver_name: v.driver_name,
-      // O map abaixo protege contra produtos deletados (v.cardapio pode ser null)
       items: v.itens_venda ? v.itens_venda.map((item: any) => ({
         qtd: item.quantidade,
-        name: item.cardapio?.nome || "Item excluído/personalizado"
+        name: item.cardapio?.nome || "Item personalizado"
       })) : []
     }));
+
+    // LÓGICA DE AUTO-IMPRESSÃO PARA BALCÃO
+    vendasFormatadas.forEach(p => {
+      if (p.status === "producao" && !pedidosImpressos.current.has(p.id)) {
+        imprimirPedido(p);
+      }
+    });
 
     setPedidos(vendasFormatadas);
     setMotoboys(dataDrivers || []);
     setLoading(false);
-  }, [pizzariaId]);
+  }, [pizzariaId, imprimirPedido]);
 
-  // Loop de atualização automática (Poling)
   useEffect(() => {
     if (pizzariaId) {
-      carregarDados(); // Carrega a primeira vez
-      const intervalo = setInterval(carregarDados, 5000); // Atualiza a cada 5s
+      carregarDados();
+      const intervalo = setInterval(carregarDados, 5000);
       return () => clearInterval(intervalo);
     }
   }, [pizzariaId, carregarDados]);
 
   // --- 2. AÇÕES DO SISTEMA ---
   async function avancarStatus(id: number, statusAtual: string) {
-    if (statusAtual === "Preparando") {
+    if (statusAtual === "Preparando" || statusAtual === "producao") {
         setPedidoSelecionado(id);
         setModalOpen(true);
         return;
@@ -119,7 +157,6 @@ export default function DashboardCozinha() {
 
   async function confirmarSaidaEntrega() {
     if (!pedidoSelecionado || !motoboyEscolhido) return alert("Selecione um motoqueiro!");
-
     const motoboy = motoboys.find(m => m.id.toString() === motoboyEscolhido);
     
     await executarAtualizacao(pedidoSelecionado, {
@@ -135,23 +172,18 @@ export default function DashboardCozinha() {
 
   async function executarAtualizacao(id: number, camposParaAtualizar: any) {
     const { error } = await supabase.from("vendas").update(camposParaAtualizar).eq("id", id);
-    
     if (!error) {
-        // Atualização Otimista (Atualiza a tela antes de buscar do banco de novo)
         if (camposParaAtualizar.status === "Arquivado") {
             setPedidos(prev => prev.filter(p => p.id !== id));
         } else {
             setPedidos(prev => prev.map(p => p.id === id ? { ...p, ...camposParaAtualizar } : p));
         }
-    } else {
-        console.error("Erro ao atualizar:", error.message);
-        alert("Erro ao atualizar pedido. Verifique o console.");
     }
   }
 
-  // Filtros das Colunas
+  // Filtros das Colunas (Adicionado 'producao' no Forno)
   const novos = pedidos.filter(p => p.status === "Pendente");
-  const preparando = pedidos.filter(p => p.status === "Preparando");
+  const preparando = pedidos.filter(p => p.status === "Preparando" || p.status === "producao");
   const entrega = pedidos.filter(p => p.status === "Em Rota");
   const entregues = pedidos.filter(p => p.status === "Entregue");
 
@@ -220,10 +252,13 @@ export default function DashboardCozinha() {
           </h2>
           <div className="space-y-3 flex-1 overflow-y-auto pr-1">
             {preparando.map((pedido) => (
-              <Card key={pedido.id} className="border-l-4 border-l-orange-500 shadow-sm">
+              <Card key={pedido.id} className={`border-l-4 shadow-sm ${pedido.status === 'producao' ? 'border-l-green-500 bg-green-50/30' : 'border-l-orange-500'}`}>
                 <CardHeader className="p-3 pb-1 flex flex-row items-center justify-between space-y-0">
                   <span className="font-bold text-sm">#{pedido.id}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">{hora(pedido.created_at)}</span>
+                  <div className="flex items-center gap-2">
+                    {pedido.status === 'producao' && <Badge className="bg-green-600 text-[9px] h-4">BALCÃO</Badge>}
+                    <span className="text-[10px] text-slate-400 font-mono">{hora(pedido.created_at)}</span>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-3 pt-1">
                   <div className="text-sm font-medium text-slate-800 mb-2 truncate">{pedido.customer_name}</div>
@@ -234,9 +269,14 @@ export default function DashboardCozinha() {
                         </div>
                     ))}
                   </div>
-                  <Button size="sm" className="w-full bg-orange-500 hover:bg-orange-600 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, "Preparando")}>
-                    Despachar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200">
+                      <Printer size={14} />
+                    </Button>
+                    <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, pedido.status)}>
+                      Despachar
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

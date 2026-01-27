@@ -6,24 +6,13 @@ import {
   Save, Store, MapPin, Phone, DollarSign, Clock, Loader2, 
   Trash2, Printer, ShieldCheck, 
   LayoutDashboard, UtensilsCrossed, Users, Package, Bike, BarChart3, Settings,
-  Globe, Edit2, Upload, X
+  Globe, Edit2, Upload, X, Copy, ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-
-const MODULOS_ACESSO = [
-  { id: "dashboard", label: "Dashboard / Cozinha", icon: <LayoutDashboard size={14}/> },
-  { id: "caixa", label: "Caixa", icon: <DollarSign size={14}/> },
-  { id: "cardapio", label: "Cardápio", icon: <UtensilsCrossed size={14}/> },
-  { id: "clientes", label: "Clientes", icon: <Users size={14}/> },
-  { id: "estoque", label: "Estoque", icon: <Package size={14}/> },
-  { id: "motoboys", label: "Motoboys", icon: <Bike size={14}/> },
-  { id: "relatorios", label: "Relatórios", icon: <BarChart3 size={14}/> },
-  { id: "configuracoes", label: "Configurações", icon: <Settings size={14}/> },
-];
 
 export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true);
@@ -36,10 +25,6 @@ export default function ConfiguracoesPage() {
     taxa_entrega_padrao: "5.00", tempo_espera_minutos: "40",
     largura_impressao: "80mm", mensagem_rodape: "Obrigado!",
     slug: "", url_logo: ""
-  });
-
-  const [novoMembro, setNovoMembro] = useState({
-    nome: "", email: "", senha: "", perfil: "atendente", permissoes: [] as string[]
   });
 
   const fetchConfig = useCallback(async () => {
@@ -64,6 +49,13 @@ export default function ConfiguracoesPage() {
     fetchConfig();
     fetchEquipe();
   }, [fetchConfig, fetchEquipe]);
+
+  // Função para copiar o link para o clipboard
+  const handleCopiarLink = () => {
+    const urlCompleta = `${window.location.origin}/cardapio-digital/${loja.slug}`;
+    navigator.clipboard.writeText(urlCompleta);
+    alert("Link copiado para a área de transferência!");
+  };
 
   async function handleUpload(file: File) {
     try {
@@ -109,39 +101,18 @@ export default function ConfiguracoesPage() {
       endereco: loja.endereco, 
       telefone: loja.telefone,
       cor_tema: loja.cor_tema, 
-      slug: loja.slug.toLowerCase().trim(),
       url_logo: loja.url_logo,
       largura_impressao: loja.largura_impressao,
       mensagem_rodape: loja.mensagem_rodape,
       taxa_entrega_padrao: Number(loja.taxa_entrega_padrao),
       tempo_espera_minutos: Number(loja.tempo_espera_minutos)
+      // Removi o update do slug aqui para evitar alterações acidentais
     }).eq("id", loja.id);
 
     if (!error) alert("Configurações salvas!");
     else alert("Erro ao salvar: " + error.message);
     setSalvando(false);
   }
-
-  async function cadastrarMembro() {
-    const pizzariaId = localStorage.getItem("pizzaria_id");
-    if (equipe.length >= 3) return alert("Limite de 3 usuários atingido.");
-    const { error } = await supabase.from("usuarios").insert([{
-      nome: novoMembro.nome, email: novoMembro.email, senha_hash: novoMembro.senha,
-      pizzaria_id: pizzariaId, perfil: novoMembro.perfil, permissoes: novoMembro.permissoes
-    }]);
-    if (!error) { 
-        alert("Membro cadastrado!"); 
-        setNovoMembro({ nome: "", email: "", senha: "", perfil: "atendente", permissoes: [] });
-        fetchEquipe(); 
-    }
-  }
-
-  const togglePermissao = (id: string) => {
-    setNovoMembro(prev => ({
-      ...prev,
-      permissoes: prev.permissoes.includes(id) ? prev.permissoes.filter(p => p !== id) : [...prev.permissoes, id]
-    }));
-  };
 
   if (loading) return <div className="h-screen flex items-center justify-center text-slate-500 font-medium"><Loader2 className="animate-spin mr-2"/> Carregando...</div>;
 
@@ -156,7 +127,7 @@ export default function ConfiguracoesPage() {
         <Card className="border-red-100 shadow-md">
             <CardHeader className="bg-red-50/50">
                 <CardTitle className="text-lg flex items-center gap-2"><Globe className="text-red-600" size={20}/> Identidade Visual</CardTitle>
-                <CardDescription>Logo e link do seu cardápio digital.</CardDescription>
+                <CardDescription>Logo e link de compartilhamento do seu cardápio.</CardDescription>
             </CardHeader>
             <CardContent className="pt-8">
                 <div className="flex flex-col md:flex-row gap-12 items-start">
@@ -189,22 +160,45 @@ export default function ConfiguracoesPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 w-full max-w-xs">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Link (URL) do Cardápio</label>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-400 text-sm">/</span>
-                          <Input 
-                            value={loja.slug} 
-                            onChange={e => setLoja({...loja, slug: e.target.value.toLowerCase().replace(/\s+/g, '-')})} 
-                            placeholder="ex: pizzaria-do-guto"
-                            className="h-10 font-medium"
-                          />
+                    <div className="flex-1 w-full max-w-md">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Link do seu Cardápio Digital</label>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg group hover:border-red-200 transition-colors">
+                            <Globe size={16} className="text-slate-400" />
+                            <span className="flex-1 text-sm font-medium text-slate-600 truncate">
+                              {typeof window !== 'undefined' ? window.location.origin : ''}/cardapio-digital/<span className="text-red-600 font-bold">{loja.slug}</span>
+                            </span>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <Button 
+                              type="button" 
+                              onClick={handleCopiarLink}
+                              variant="outline"
+                              className="flex-1 gap-2 text-xs font-bold uppercase tracking-tight"
+                            >
+                              <Copy size={14} /> Copiar Link
+                            </Button>
+                            
+                            <Button 
+                              type="button"
+                              onClick={() => window.open(`/cardapio-digital/${loja.slug}`, '_blank')}
+                              variant="outline"
+                              className="flex-1 gap-2 text-xs font-bold uppercase tracking-tight border-red-100 text-red-600 hover:bg-red-50"
+                            >
+                              <ExternalLink size={14} /> Visualizar
+                            </Button>
+                          </div>
                         </div>
+                        <p className="mt-2 text-[10px] text-slate-400 italic font-medium">
+                          * Este é o link que seus clientes usarão para fazer pedidos.
+                        </p>
                     </div>
                 </div>
             </CardContent>
         </Card>
 
+        {/* Restante do seu código (Contato e Sistema)... */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
                 <CardHeader><CardTitle className="text-base flex items-center gap-2"><Store size={18}/> Contato</CardTitle></CardHeader>
