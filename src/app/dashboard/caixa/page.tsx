@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase"; 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -58,15 +58,23 @@ export default function CaixaPage() {
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // 1. CARREGAR DADOS GERAIS E VERIFICAR SESSÃO
-  useEffect(() => {
-    async function carregarDadosIniciais() {
-      setLoadingSistema(true);
-      const pizzariaId = localStorage.getItem("pizzaria_id");
-      const usuarioId = localStorage.getItem("usuario_id");
+ // 1. CARREGAR DADOS GERAIS E VERIFICAR SESSÃO
+useEffect(() => {
+  async function carregarDadosIniciais() {
+    setLoadingSistema(true);
+    
+    // Garantir que o ID seja tratado como número se o seu banco for integer
+    const storageId = localStorage.getItem("pizzaria_id");
+    const pizzariaId = storageId ? Number(storageId) : null;
+    const usuarioId = localStorage.getItem("usuario_id");
 
-      if (!pizzariaId || !usuarioId) return;
+    if (!pizzariaId || !usuarioId) {
+      console.error("IDs não encontrados no localStorage");
+      setLoadingSistema(false);
+      return;
+    }
 
+    try {
       // A. Verifica se tem CAIXA ABERTO
       const { data: sessaoAberta } = await supabase
         .from("caixa_sessoes")
@@ -77,28 +85,48 @@ export default function CaixaPage() {
         .maybeSingle();
 
       setSessao(sessaoAberta);
+      if (sessaoAberta) carregarMovimentacoes(sessaoAberta.id);
 
-      // Se tiver aberto, carrega movimentações
-      if (sessaoAberta) {
-          carregarMovimentacoes(sessaoAberta.id);
-      }
+      // B. Carrega Produtos (O filtro deve ser o ID da pizzaria)
+      const { data: itensCardapio, error: errProd } = await supabase
+        .from("cardapio")
+        .select("*")
+        .eq("pizzaria_id", pizzariaId) // Certifique-se que na tabela cardapio a coluna chama pizzaria_id
+        .eq("ativo", true)
+        .order("nome");
 
-      // B. Carrega Produtos e Clientes (PDV)
-      const { data: itensCardapio } = await supabase.from("cardapio").select("*").eq("ativo", true).eq("pizzaria_id", pizzariaId).order("nome");
-      const { data: cli } = await supabase.from("customers").select("*").eq("pizzaria_id", pizzariaId); // Ajuste se tiver filtro de pizzaria nos clientes
-      const { data: config } = await supabase.from("loja_config").select("*").eq("pizzaria_id", pizzariaId).limit(1).single();
-
+      if (errProd) console.error("Erro Cardápio:", errProd);
       setCardapio(itensCardapio || []);
+
+      // C. Carrega Clientes
+      const { data: cli } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("pizzaria_id", pizzariaId);
       setClientes(cli || []);
-      
+
+      // D. Carrega Configurações da Loja 
+      // IMPORTANTE: Aqui usamos .eq("id", pizzariaId) porque pizzariaId É o ID da config
+      const { data: config } = await supabase
+        .from("loja_config")
+        .select("*")
+        .eq("id", pizzariaId) 
+        .single();
+
       if (config) {
         setTaxaBase(Number(config.taxa_entrega_padrao));
         setLojaConfig(config);
       }
+
+    } catch (err) {
+      console.error("Erro geral no carregamento:", err);
+    } finally {
       setLoadingSistema(false);
     }
-    carregarDadosIniciais();
-  }, []);
+  }
+  
+  carregarDadosIniciais();
+}, []);
 
   async function carregarMovimentacoes(sessaoId: number) {
       const { data } = await supabase

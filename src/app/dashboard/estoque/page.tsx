@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { 
   Plus, Trash2, Search, Package, ChefHat, Loader2, 
-  Settings, Save 
+  Settings, Save, ArrowDownCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 
 export default function EstoquePage() {
-  // --- PREVINE ERRO DE HYDRATION (Tela piscando/travando) ---
   const [isMounted, setIsMounted] = useState(false);
 
   // --- ESTADOS GERAIS ---
@@ -26,6 +25,11 @@ export default function EstoquePage() {
   // --- CADASTRO DE ITEM ---
   const [novoItem, setNovoItem] = useState({ nome: "", quantidade: "", unidade: "un", custo: "", categoria: "mercearia" });
   
+  // --- ENTRADA DE MERCADORIA ---
+  const [modalEntradaOpen, setModalEntradaOpen] = useState(false);
+  const [itemParaEntrada, setItemParaEntrada] = useState("");
+  const [qtdEntrada, setQtdEntrada] = useState("");
+
   // --- GESTÃO DE RECEITAS ---
   const [receitas, setReceitas] = useState<any[]>([]);
   const [modalReceitaOpen, setModalReceitaOpen] = useState(false);
@@ -57,14 +61,38 @@ export default function EstoquePage() {
     setLoading(false);
   }
 
-  // --- CRUD ESTOQUE (COM CORREÇÃO DE ERROS) ---
+  // Encontra o item selecionado para mostrar a unidade correta (kg/un) na entrada
+  const itemSelecionadoEntrada = itens.find(i => i.id.toString() === itemParaEntrada);
+
+  async function handleEntradaMercadoria() {
+    if (!itemParaEntrada || !qtdEntrada) return alert("Selecione o item e a quantidade!");
+
+    if (!itemSelecionadoEntrada) return;
+
+    // Soma a nova quantidade (seja quilo ou unidade) ao saldo atual
+    const novaQuantidade = Number(itemSelecionadoEntrada.quantidade) + Number(qtdEntrada);
+
+    const { error } = await supabase
+      .from("estoque")
+      .update({ quantidade: novaQuantidade })
+      .eq("id", itemParaEntrada);
+
+    if (error) {
+      alert("Erro ao atualizar estoque: " + error.message);
+    } else {
+      setModalEntradaOpen(false);
+      setItemParaEntrada("");
+      setQtdEntrada("");
+      fetchDados();
+    }
+  }
+
+  // --- CRUD ESTOQUE ---
   async function handleAddItem() {
-    // 1. Validação básica
     if (!novoItem.nome || !novoItem.quantidade) {
         return alert("Por favor, preencha o Nome e a Quantidade!");
     }
 
-    // 2. Tenta inserir no banco
     const { error } = await supabase.from("estoque").insert([{
       nome: novoItem.nome,
       quantidade: Number(novoItem.quantidade),
@@ -73,14 +101,11 @@ export default function EstoquePage() {
       categoria: novoItem.categoria
     }]);
 
-    // 3. Verifica erro (ex: RLS bloqueando)
     if (error) {
       console.error("Erro ao salvar:", error);
-      return alert(`Erro ao salvar: ${error.message}\nVerifique as permissões (RLS) no Supabase.`);
+      return alert(`Erro ao salvar: ${error.message}`);
     }
 
-    // 4. Sucesso
-    // alert("Item salvo com sucesso!"); // Pode descomentar se quiser o aviso
     setNovoItem({ nome: "", quantidade: "", unidade: "un", custo: "", categoria: "mercearia" });
     fetchDados();
   }
@@ -88,12 +113,7 @@ export default function EstoquePage() {
   async function handleDelete(id: number) {
     if (!confirm("Tem certeza que deseja excluir este item?")) return;
     const { error } = await supabase.from("estoque").delete().eq("id", id);
-    
-    if (error) {
-        alert("Erro ao excluir: " + error.message);
-    } else {
-        fetchDados();
-    }
+    if (!error) fetchDados();
   }
 
   // --- RECEITAS ---
@@ -139,10 +159,7 @@ export default function EstoquePage() {
 
     const { error: errorIng } = await supabase.from("ingredientes_receita_estoque").insert(ingredientesFormatados);
     
-    if (errorIng) {
-        alert("Receita criada, mas houve erro nos ingredientes: " + errorIng.message);
-    } else {
-        alert("Receita salva com sucesso!");
+    if (!errorIng) {
         setModalReceitaOpen(false);
         setNovaReceitaNome(""); setItemDestino(""); setRendimento(""); setIngredientesTemp([]);
         fetchDados();
@@ -159,24 +176,17 @@ export default function EstoquePage() {
   async function handleProduzir() {
     if (!receitaParaProduzir) return alert("Selecione uma receita");
     setProcessando(true);
-    
     const { error } = await supabase.rpc("realizar_producao", {
         id_receita: Number(receitaParaProduzir),
         qtd_vezes: Number(qtdMultiplicador)
     });
-
-    if (error) {
-        console.error(error);
-        alert("Erro na produção: " + error.message);
-    } else {
-        alert("Produção realizada com sucesso! Estoque atualizado.");
+    if (!error) {
         setModalProduzirOpen(false);
         fetchDados();
     }
     setProcessando(false);
   }
 
-  // Helpers de Renderização
   const itensFiltrados = itens.filter(i => i.nome.toLowerCase().includes(busca.toLowerCase()));
   
   const TabelaEstoque = ({ categoria }: { categoria: string }) => {
@@ -208,7 +218,6 @@ export default function EstoquePage() {
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
       
-      {/* HEADER DA PÁGINA */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
@@ -218,20 +227,67 @@ export default function EstoquePage() {
         </div>
 
         <div className="flex gap-2">
-            
-            {/* BOTÃO 1: CONFIGURAR RECEITAS */}
+            {/* MODAL DE ENTRADA ATUALIZADO PARA SUPORTAR KG OU UN */}
+            <Dialog open={modalEntradaOpen} onOpenChange={setModalEntradaOpen}>
+                <DialogTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold gap-2">
+                        <ArrowDownCircle size={18} /> Entrada de Compra
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Registrar Entrada de Mercadoria</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500">Item que Chegou</label>
+                            <Select value={itemParaEntrada} onValueChange={setItemParaEntrada}>
+                                <SelectTrigger><SelectValue placeholder="Selecione o produto..." /></SelectTrigger>
+                                <SelectContent>
+                                    {itens.map(i => (
+                                        <SelectItem key={i.id} value={i.id.toString()}>
+                                            {i.nome} (Atual: {i.quantidade}{i.unidade})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500">
+                                Quantidade a Adicionar {itemSelecionadoEntrada ? `(${itemSelecionadoEntrada.unidade})` : ""}
+                            </label>
+                            <div className="relative">
+                                <Input 
+                                    type="number" 
+                                    step="0.001" 
+                                    placeholder="0.00" 
+                                    value={qtdEntrada} 
+                                    onChange={e => setQtdEntrada(e.target.value)} 
+                                />
+                                {itemSelecionadoEntrada && (
+                                    <span className="absolute right-3 top-2 text-slate-400 text-sm font-bold">
+                                        {itemSelecionadoEntrada.unidade}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <Button onClick={handleEntradaMercadoria} className="w-full bg-blue-600 text-white font-bold h-11">
+                            Confirmar Entrada
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={modalReceitaOpen} onOpenChange={setModalReceitaOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" className="gap-2 border-slate-300 text-slate-700">
-                        <Settings size={18} /> Configurar Receitas
+                    <Button variant="outline" className="gap-2 border-slate-300 text-slate-700 font-bold">
+                        <Settings size={18} /> Receitas
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
-                    <DialogHeader><DialogTitle>Criar Nova Receita</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Configuração de Receitas</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-xs font-bold text-slate-500">Nome</label>
+                                <label className="text-xs font-bold text-slate-500">Nome da Receita</label>
                                 <Input placeholder="Ex: Massa Padrão" value={novaReceitaNome} onChange={e => setNovaReceitaNome(e.target.value)} />
                             </div>
                             <div className="space-y-1">
@@ -252,7 +308,7 @@ export default function EstoquePage() {
                             <div className="flex gap-2 items-end">
                                 <div className="flex-1">
                                     <Select value={ingredienteSel} onValueChange={setIngredienteSel}>
-                                        <SelectTrigger className="bg-white"><SelectValue placeholder="Ingrediente..." /></SelectTrigger>
+                                        <SelectTrigger className="bg-white"><SelectValue placeholder="Escolha..." /></SelectTrigger>
                                         <SelectContent>{itens.map(i => <SelectItem key={i.id} value={i.id.toString()}>{i.nome} ({i.unidade})</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
@@ -272,23 +328,10 @@ export default function EstoquePage() {
                             </div>
                         </div>
                         <Button onClick={salvarNovaReceita} className="w-full bg-slate-900 text-white">Salvar Receita</Button>
-                        
-                        <div className="mt-6 border-t pt-4">
-                            <h4 className="text-sm font-bold text-slate-700 mb-2">Receitas Cadastradas</h4>
-                            <div className="space-y-2">
-                                {receitas.map(r => (
-                                    <div key={r.id} className="flex justify-between items-center bg-slate-100 p-2 rounded text-sm">
-                                        <div><span className="font-bold">{r.nome}</span> <span className="text-slate-500 text-xs ml-2">&rarr; {r.rendimento}x {r.item_destino?.nome}</span></div>
-                                        <button onClick={() => deletarReceita(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
                     </div>
                 </DialogContent>
             </Dialog>
 
-            {/* BOTÃO 2: PRODUZIR */}
             <Dialog open={modalProduzirOpen} onOpenChange={setModalProduzirOpen}>
                 <DialogTrigger asChild>
                     <Button className="bg-orange-600 hover:bg-orange-700 text-white font-bold gap-2">
@@ -296,21 +339,21 @@ export default function EstoquePage() {
                     </Button>
                 </DialogTrigger>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Produção</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Realizar Produção</DialogTitle></DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">Receita</label>
+                            <label className="text-sm font-bold text-slate-700">O que vamos produzir?</label>
                             <Select value={receitaParaProduzir} onValueChange={setReceitaParaProduzir}>
-                                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder="Selecione a receita..." /></SelectTrigger>
                                 <SelectContent>{receitas.map(r => (<SelectItem key={r.id} value={r.id.toString()}>{r.nome}</SelectItem>))}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">Bateladas</label>
+                            <label className="text-sm font-bold text-slate-700">Quantas vezes?</label>
                             <Input type="number" value={qtdMultiplicador} onChange={e => setQtdMultiplicador(e.target.value)} />
                         </div>
-                        <Button onClick={handleProduzir} disabled={processando} className="w-full bg-green-600 hover:bg-green-700 font-bold">
-                            {processando ? <Loader2 className="animate-spin" /> : "Confirmar"}
+                        <Button onClick={handleProduzir} disabled={processando} className="w-full bg-green-600 text-white font-bold h-11">
+                            {processando ? <Loader2 className="animate-spin" /> : "Confirmar Produção"}
                         </Button>
                     </div>
                 </DialogContent>
@@ -318,13 +361,12 @@ export default function EstoquePage() {
         </div>
       </div>
 
-      {/* FORMULÁRIO RÁPIDO */}
       <Card className="bg-slate-50 border-slate-200">
-        <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500 uppercase font-bold">Novo Item</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500 uppercase font-bold">Cadastro de Item Base</CardTitle></CardHeader>
         <CardContent>
             <div className="flex flex-col md:flex-row gap-3 items-end">
                 <div className="flex-1 w-full space-y-1">
-                    <label className="text-xs font-bold text-slate-400">Nome</label>
+                    <label className="text-xs font-bold text-slate-400">Nome do Insumo</label>
                     <Input placeholder="Ex: Mussarela" value={novoItem.nome} onChange={e => setNovoItem({...novoItem, nome: e.target.value})} className="bg-white" />
                 </div>
                 <div className="w-32 space-y-1">
@@ -342,11 +384,11 @@ export default function EstoquePage() {
                      </Select>
                 </div>
                 <div className="w-24 space-y-1">
-                    <label className="text-xs font-bold text-slate-400">Qtd</label>
+                    <label className="text-xs font-bold text-slate-400">Qtd Inicial</label>
                     <Input type="number" placeholder="0" value={novoItem.quantidade} onChange={e => setNovoItem({...novoItem, quantidade: e.target.value})} className="bg-white" />
                 </div>
                 <div className="w-24 space-y-1">
-                     <label className="text-xs font-bold text-slate-400">Unidade</label>
+                     <label className="text-xs font-bold text-slate-400">Medida</label>
                      <Select value={novoItem.unidade} onValueChange={v => setNovoItem({...novoItem, unidade: v})}>
                         <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -358,24 +400,23 @@ export default function EstoquePage() {
                      </Select>
                 </div>
                 <div className="w-28 space-y-1">
-                    <label className="text-xs font-bold text-slate-400">Custo</label>
+                    <label className="text-xs font-bold text-slate-400">Preço Custo</label>
                     <Input type="number" placeholder="0.00" value={novoItem.custo} onChange={e => setNovoItem({...novoItem, custo: e.target.value})} className="bg-white" />
                 </div>
-                <Button onClick={handleAddItem} className="bg-slate-900 text-white hover:bg-slate-800 px-6">Salvar</Button>
+                <Button onClick={handleAddItem} className="bg-slate-900 text-white hover:bg-slate-800 px-6 font-bold h-10">Cadastrar</Button>
             </div>
         </CardContent>
       </Card>
 
-      {/* TABELAS */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 bg-white p-2 rounded-lg border w-full md:w-1/3">
             <Search className="text-slate-400" size={18} />
-            <input placeholder="Buscar item..." className="outline-none text-sm w-full" value={busca} onChange={e => setBusca(e.target.value)} />
+            <input placeholder="Buscar no estoque..." className="outline-none text-sm w-full" value={busca} onChange={e => setBusca(e.target.value)} />
         </div>
 
         <Tabs defaultValue="todos" className="w-full">
             <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 mb-4 h-auto p-1 bg-slate-100">
-                <TabsTrigger value="todos">Geral</TabsTrigger>
+                <TabsTrigger value="todos">Tudo</TabsTrigger>
                 <TabsTrigger value="frios">Frios</TabsTrigger>
                 <TabsTrigger value="hortifruti">Hortifruti</TabsTrigger>
                 <TabsTrigger value="mercearia">Mercearia</TabsTrigger>
