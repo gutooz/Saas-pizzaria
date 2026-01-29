@@ -1,22 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase"; 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { 
-  Search, ShoppingCart, Trash2, CheckCircle, ChevronsUpDown, Check, 
-  Pizza, Coffee, CircleDashed, Bike, PlusCircle, Loader2, 
-  Wallet, Lock, ArrowUpCircle, ArrowDownCircle, DollarSign, History
+  Search, ShoppingCart, Trash2, CheckCircle, ChevronsUpDown, 
+  PlusCircle, Loader2, Wallet, User, Phone, X 
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 import PizzaBuilder from "@/components/PizzaBuilder"; 
 
@@ -28,25 +24,32 @@ export default function CaixaPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [loadingSistema, setLoadingSistema] = useState(true);
   
-  // --- ESTADOS DO CAIXA (Sessão) ---
+  // --- ESTADOS DO CAIXA ---
   const [sessao, setSessao] = useState<any>(null);
   const [valorAbertura, setValorAbertura] = useState("");
   const [modalCaixaOpen, setModalCaixaOpen] = useState(false);
   
-  // Estados de Movimentação do Caixa
   const [tipoMovimento, setTipoMovimento] = useState<"sangria" | "suprimento">("sangria");
   const [valorMovimento, setValorMovimento] = useState("");
   const [descMovimento, setDescMovimento] = useState("");
   const [valorFechamento, setValorFechamento] = useState("");
   const [movimentacoes, setMovimentacoes] = useState<any[]>([]);
 
-  // --- ESTADOS DO PDV (Vendas) ---
+  // --- ESTADOS DO PDV ---
   const [cardapio, setCardapio] = useState<any[]>([]);
+  const [categoriasAbas, setCategoriasAbas] = useState<string[]>(["Pizza", "Bebida"]); 
+  
   const [clientes, setClientes] = useState<any[]>([]);
   const [carrinho, setCarrinho] = useState<any[]>([]);
   const [taxaBase, setTaxaBase] = useState(5.00); 
   const [lojaConfig, setLojaConfig] = useState<any>({}); 
+  
+  // Busca de Produtos
   const [buscaProduto, setBuscaProduto] = useState("");
+  
+  // Busca de Clientes (NOVA LÓGICA MANUAL)
+  const [termoBuscaCliente, setTermoBuscaCliente] = useState("");
+  
   const [formaPagamento, setFormaPagamento] = useState("Pix");
   const [openCliente, setOpenCliente] = useState(false);
   const [clienteSelecionado, setClienteSelecionado] = useState<string>("");
@@ -58,7 +61,10 @@ export default function CaixaPage() {
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // 1. CARREGAR DADOS GERAIS E VERIFICAR SESSÃO
+  // Normalizador de texto (ignora maiúsculas, minúsculas e acentos)
+  const normalize = (str: string) => str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+
+  // 1. CARREGAR DADOS
   useEffect(() => {
     async function carregarDadosIniciais() {
       setLoadingSistema(true);
@@ -89,24 +95,26 @@ export default function CaixaPage() {
           .eq("pizzaria_id", pizzariaId)
           .eq("ativo", true)
           .order("nome");
-
+        
         setCardapio(itensCardapio || []);
 
         const { data: cli } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("pizzaria_id", pizzariaId);
+            .from("customers")
+            .select("*")
+            .eq("pizzaria_id", pizzariaId)
+            .order("name");
+        
+        console.log("Clientes do Banco:", cli); // Debug
         setClientes(cli || []);
 
-        const { data: config } = await supabase
-          .from("loja_config")
-          .select("*")
-          .eq("id", pizzariaId) 
-          .single();
-
+        const { data: config } = await supabase.from("loja_config").select("*").eq("id", pizzariaId).single();
         if (config) {
           setTaxaBase(Number(config.taxa_entrega_padrao));
           setLojaConfig(config);
+          
+          if (config.ordem_categorias && Array.isArray(config.ordem_categorias) && config.ordem_categorias.length > 0) {
+             setCategoriasAbas(config.ordem_categorias);
+          }
         }
 
       } catch (err) {
@@ -119,11 +127,7 @@ export default function CaixaPage() {
   }, []);
 
   const carregarMovimentacoes = useCallback(async (sessaoId: number) => {
-      const { data } = await supabase
-        .from("caixa_movimentacoes")
-        .select("*")
-        .eq("sessao_id", sessaoId)
-        .order("criado_em", { ascending: false });
+      const { data } = await supabase.from("caixa_movimentacoes").select("*").eq("sessao_id", sessaoId).order("criado_em", { ascending: false });
       setMovimentacoes(data || []);
   }, []);
 
@@ -301,11 +305,10 @@ export default function CaixaPage() {
     }));
 
     try {
-      // AJUSTE: Mapeamento exato das colunas para evitar o erro de Schema Cache
       const { data, error } = await supabase.rpc("finalizar_venda", {
         itens_json: itensParaEnviar,
         total_venda: totalFinal,
-        cliente_nome: nomeCliente, // Usando o nome exato da coluna que deu erro
+        cliente_nome: nomeCliente, 
         cliente_telefone: telefoneCliente,
         endereco_entrega: enderecoCliente,
         taxa_entrega_valor: taxaEntrega,
@@ -348,11 +351,22 @@ export default function CaixaPage() {
     }
   }
 
-  // Filtros
-  const produtosFiltrados = cardapio.filter(p => p.nome.toLowerCase().includes(buscaProduto.toLowerCase()));
-  const listaGrandes = produtosFiltrados.filter(p => p.categoria === 'pizza' || (p.tamanho === 'Grande' && !p.categoria));
-  const listaBrotos = produtosFiltrados.filter(p => p.categoria === 'broto' || p.tamanho === 'Broto');
-  const listaBebidas = produtosFiltrados.filter(p => p.categoria === 'bebida');
+  // --- FILTROS INTELIGENTES ---
+  const produtosFiltrados = cardapio.filter(p => normalize(p.nome).includes(normalize(buscaProduto)));
+  const getProdutosPorCategoria = (catNome: string) => produtosFiltrados.filter(p => normalize(p.categoria) === normalize(catNome));
+  const listaPizzasParaMontar = cardapio.filter(p => normalize(p.categoria) === 'pizza');
+  const listaBrotosParaMontar = cardapio.filter(p => normalize(p.categoria) === 'broto');
+
+  // --- LÓGICA DE FILTRO DE CLIENTE MANUAL E ROBUSTA ---
+  const clientesFiltrados = useMemo(() => {
+      const termo = normalize(termoBuscaCliente);
+      if (!termo) return clientes;
+      return clientes.filter(c => {
+          const nome = normalize(c.name);
+          const telefone = c.phone ? c.phone.replace(/\D/g, "") : ""; // Remove parenteses e traços
+          return nome.includes(termo) || telefone.includes(termo);
+      });
+  }, [clientes, termoBuscaCliente]);
 
   const ProdutoCard = ({ prod }: { prod: any }) => (
     <Card className="cursor-pointer hover:border-red-500 transition-all active:scale-95" onClick={() => adicionarAoCarrinho(prod)}>
@@ -384,6 +398,9 @@ export default function CaixaPage() {
         <Dialog open={modalCaixaOpen} onOpenChange={setModalCaixaOpen}>
           <DialogTrigger asChild><Button variant="outline"><Wallet className="mr-2" size={16}/> Gerenciar</Button></DialogTrigger>
           <DialogContent className="max-w-2xl">
+            <DialogHeader>
+                <DialogTitle>Gerenciamento de Caixa</DialogTitle>
+            </DialogHeader>
             <Tabs defaultValue="acoes">
               <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="acoes">Movimentos</TabsTrigger><TabsTrigger value="extrato">Extrato</TabsTrigger></TabsList>
               <TabsContent value="acoes" className="grid grid-cols-2 gap-4 mt-4">
@@ -415,18 +432,33 @@ export default function CaixaPage() {
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
           <div className="bg-white p-3 rounded-xl border flex gap-4"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><Input className="pl-10" placeholder="Buscar..." value={buscaProduto} onChange={e => setBuscaProduto(e.target.value)}/></div></div>
           <div className="flex-1 bg-white rounded-xl border overflow-hidden flex flex-col">
-            <Tabs defaultValue="grandes" className="flex-1 flex flex-col">
-              <TabsList className="grid grid-cols-3 m-3"><TabsTrigger value="grandes">Grandes</TabsTrigger><TabsTrigger value="brotos">Brotos</TabsTrigger><TabsTrigger value="bebidas">Bebidas</TabsTrigger></TabsList>
-              <div className="flex-1 overflow-auto p-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <TabsContent value="grandes" className="col-span-full grid grid-cols-2 lg:grid-cols-4 gap-3 mt-0">
-                  <Card className="cursor-pointer border-dashed border-2 border-green-300 bg-green-50 flex flex-col items-center justify-center p-4" onClick={() => { setTipoMontagem('Grande'); setModalPizzaAberto(true); }}><PlusCircle className="text-green-600 mb-1"/><span className="font-bold text-sm">Montar Pizza</span></Card>
-                  {listaGrandes.map(p => <ProdutoCard key={p.id} prod={p}/>)}
+            <Tabs defaultValue={categoriasAbas[0] || "todos"} className="flex-1 flex flex-col">
+              <div className="overflow-x-auto border-b">
+                  <TabsList className="flex w-max m-3 h-auto p-1">
+                      {categoriasAbas.map(cat => (
+                          <TabsTrigger key={cat} value={cat} className="px-4 py-2">{cat}</TabsTrigger>
+                      ))}
+                      <TabsTrigger value="todos" className="text-xs bg-slate-200 data-[state=active]:bg-slate-800 data-[state=active]:text-white">TODOS</TabsTrigger>
+                  </TabsList>
+              </div>
+              <div className="flex-1 overflow-auto p-3">
+                {categoriasAbas.map(cat => (
+                    <TabsContent key={cat} value={cat} className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-0">
+                        {normalize(cat) === 'pizza' && (
+                            <Card className="cursor-pointer border-dashed border-2 border-green-300 bg-green-50 flex flex-col items-center justify-center p-4" onClick={() => { setTipoMontagem('Grande'); setModalPizzaAberto(true); }}><PlusCircle className="text-green-600 mb-1"/><span className="font-bold text-sm">Montar Pizza</span></Card>
+                        )}
+                        {normalize(cat) === 'broto' && (
+                            <Card className="cursor-pointer border-dashed border-2 border-green-300 bg-green-50 flex flex-col items-center justify-center p-4" onClick={() => { setTipoMontagem('Broto'); setModalPizzaAberto(true); }}><PlusCircle className="text-green-600 mb-1"/><span className="font-bold text-sm">Montar Broto</span></Card>
+                        )}
+                        {getProdutosPorCategoria(cat).map(p => <ProdutoCard key={p.id} prod={p}/>)}
+                        {getProdutosPorCategoria(cat).length === 0 && normalize(cat) !== 'pizza' && normalize(cat) !== 'broto' && (
+                            <div className="col-span-full text-center text-slate-400 py-10 text-sm">Nenhum item nesta categoria.</div>
+                        )}
+                    </TabsContent>
+                ))}
+                <TabsContent value="todos" className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-0">
+                    {produtosFiltrados.map(p => <ProdutoCard key={p.id} prod={p}/>)}
                 </TabsContent>
-                <TabsContent value="brotos" className="col-span-full grid grid-cols-2 lg:grid-cols-4 gap-3 mt-0">
-                  <Card className="cursor-pointer border-dashed border-2 border-green-300 bg-green-50 flex flex-col items-center justify-center p-4" onClick={() => { setTipoMontagem('Broto'); setModalPizzaAberto(true); }}><PlusCircle className="text-green-600 mb-1"/><span className="font-bold text-sm">Montar Broto</span></Card>
-                  {listaBrotos.map(p => <ProdutoCard key={p.id} prod={p}/>)}
-                </TabsContent>
-                <TabsContent value="bebidas" className="col-span-full grid grid-cols-2 lg:grid-cols-4 gap-3 mt-0">{listaBebidas.map(p => <ProdutoCard key={p.id} prod={p}/>)}</TabsContent>
               </div>
             </Tabs>
           </div>
@@ -435,10 +467,62 @@ export default function CaixaPage() {
         <div className="w-96 bg-white border rounded-xl shadow-xl flex flex-col overflow-hidden">
           <div className="p-4 bg-slate-50 border-b space-y-3">
             <h2 className="font-bold flex items-center gap-2"><ShoppingCart size={18}/> Pedido Atual</h2>
+            
+            {/* SELETOR DE CLIENTE MANUAL E INFALÍVEL */}
             <Popover open={openCliente} onOpenChange={setOpenCliente}>
-              <PopoverTrigger asChild><Button variant="outline" className="w-full justify-between h-9 text-sm">{clienteSelecionado ? (clienteSelecionado === "balcao" ? "Cliente Balcão" : clientes.find(c => c.id.toString() === clienteSelecionado)?.name) : "Selecionar Cliente..."}<ChevronsUpDown size={14}/></Button></PopoverTrigger>
-              <PopoverContent className="w-80 p-0"><Command><CommandInput placeholder="Buscar..."/><CommandList><CommandEmpty>Nada encontrado.</CommandEmpty><CommandGroup><CommandItem onSelect={() => { setClienteSelecionado("balcao"); setOpenCliente(false); }}>Cliente Balcão</CommandItem>{clientes.map(c => (<CommandItem key={c.id} onSelect={() => { setClienteSelecionado(c.id.toString()); setOpenCliente(false); }}>{c.name} - {c.phone}</CommandItem>))}</CommandGroup></CommandList></Command></PopoverContent>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between h-9 text-sm">
+                    {clienteSelecionado ? (clienteSelecionado === "balcao" ? "Cliente Balcão" : clientes.find(c => c.id.toString() === clienteSelecionado)?.name) : "Selecionar Cliente..."}
+                    <ChevronsUpDown size={14}/>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-3" align="start">
+                <div className="space-y-2">
+                    <div className="relative">
+                        <Search className="absolute left-2 top-2.5 text-slate-400" size={14} />
+                        <Input 
+                            placeholder="Buscar nome ou telefone..." 
+                            value={termoBuscaCliente}
+                            onChange={(e) => setTermoBuscaCliente(e.target.value)}
+                            className="pl-8 h-9 text-sm"
+                            autoFocus
+                        />
+                        {termoBuscaCliente && (
+                            <button onClick={() => setTermoBuscaCliente("")} className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500">
+                                <X size={14}/>
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="max-h-[250px] overflow-y-auto space-y-1 pr-1">
+                        <div 
+                            className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 flex items-center gap-2"
+                            onClick={() => { setClienteSelecionado("balcao"); setOpenCliente(false); }}
+                        >
+                            <User size={14}/> Cliente Balcão
+                        </div>
+                        {clientesFiltrados.length === 0 ? (
+                            <div className="text-center text-xs text-slate-400 py-4">Nenhum cliente encontrado</div>
+                        ) : (
+                            clientesFiltrados.map(c => (
+                                <div 
+                                    key={c.id} 
+                                    className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 border-b border-slate-50 last:border-0"
+                                    onClick={() => { setClienteSelecionado(c.id.toString()); setOpenCliente(false); }}
+                                >
+                                    <div className="font-bold text-slate-700">{c.name}</div>
+                                    <div className="text-xs text-slate-400 flex items-center gap-1"><Phone size={10}/> {c.phone || "Sem telefone"}</div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div className="text-[10px] text-center text-slate-300 border-t pt-1">
+                        Exibindo {clientesFiltrados.length} de {clientes.length} clientes
+                    </div>
+                </div>
+              </PopoverContent>
             </Popover>
+
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
             {carrinho.map((item, index) => (<div key={index} className="flex justify-between items-center text-sm border-b pb-1"><div><b>{item.qtd}x</b> {item.nome}</div><div className="flex items-center gap-2"><b>R$ {(item.precoNumerico*item.qtd).toFixed(2)}</b><button onClick={() => removerDoCarrinho(index)} className="text-red-400"><Trash2 size={12}/></button></div></div>))}
@@ -452,7 +536,7 @@ export default function CaixaPage() {
           </div>
         </div>
       </div>
-      {modalPizzaAberto && (<PizzaBuilder pizzasDisponiveis={tipoMontagem === 'Broto' ? listaBrotos : listaGrandes} tamanhoNome={tipoMontagem} maxSabores={tipoMontagem === 'Broto' ? 2 : 3} onClose={() => setModalPizzaAberto(false)} onAddToCart={handleAdicionarPizzaMontada} />)}
+      {modalPizzaAberto && (<PizzaBuilder pizzasDisponiveis={tipoMontagem === 'Broto' ? listaBrotosParaMontar : listaPizzasParaMontar} tamanhoNome={tipoMontagem} maxSabores={tipoMontagem === 'Broto' ? 2 : 3} onClose={() => setModalPizzaAberto(false)} onAddToCart={handleAdicionarPizzaMontada} />)}
     </div>
   );
 }

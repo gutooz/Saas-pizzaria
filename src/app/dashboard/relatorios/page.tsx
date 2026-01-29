@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Printer, Bike, BarChart3, CreditCard, Wallet, Banknote, User, Loader2, 
-  Clock, CalendarDays, Filter, ArrowUpCircle, ArrowDownCircle, AlertTriangle, FileText, Globe 
+  Printer, Bike, BarChart3, Wallet, Banknote, User, Loader2, 
+  CalendarDays, Filter, ArrowUpCircle, ArrowDownCircle, AlertTriangle 
 } from "lucide-react";
 
 // Helper para converter data
@@ -152,6 +152,7 @@ export default function RelatoriosUnificado() {
 
   const BRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   const formatarData = (dataStr: string) => {
+      if (!dataStr) return "-";
       const d = new Date(dataStr);
       return periodoFiltro === "dia" 
         ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute:'2-digit' })
@@ -252,7 +253,7 @@ export default function RelatoriosUnificado() {
                             <TableRow key={venda.id}>
                                 <TableCell className="text-xs text-slate-500 font-mono">{formatarData(venda.created_at)}</TableCell>
                                 <TableCell className="font-bold">#{venda.id}</TableCell>
-                                <TableCell>{venda.cliente}</TableCell>
+                                <TableCell>{venda.cliente_nome}</TableCell>
                                 <TableCell className="text-xs truncate max-w-[200px]">{venda.itens_venda?.map((i: any) => `${i.quantidade}x ${i.cardapio?.nome}`).join(', ')}</TableCell>
                                 <TableCell className="text-center capitalize"><Badge variant="outline">{venda.metodo_pagamento}</Badge></TableCell>
                                 <TableCell className="text-right font-bold">{BRL(Number(venda.total))}</TableCell>
@@ -265,9 +266,121 @@ export default function RelatoriosUnificado() {
         </div>
       )}
 
-      {/* (As outras abas Motoboys e Financeiro seguem a mesma lógica de filtragem que já está no carregarDados) */}
-      {activeTab === "motoboys" && <div className="p-4 text-center text-slate-500">Relatório de Motoboys filtrado por: {periodoFiltro === 'dia' ? dataFiltro : 'Todo o período'}</div>}
-      {activeTab === "financeiro" && <div className="p-4 text-center text-slate-500">Relatório Financeiro filtrado por: {periodoFiltro === 'dia' ? dataFiltro : 'Todo o período'}</div>}
+      {/* CONTEÚDO MOTOBOYS (COMPLETADO COM DADOS REAIS) */}
+      {activeTab === "motoboys" && (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-500">Total Taxas</CardTitle>
+                        <Bike size={16} className="text-slate-400" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{BRL(totaisMotos.taxas)}</div></CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-500">Total Diárias</CardTitle>
+                        <User size={16} className="text-slate-400" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{BRL(totaisMotos.diarias)}</div></CardContent>
+                </Card>
+                <Card className="bg-slate-900 text-white border-0">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-300">Total a Pagar</CardTitle>
+                        <Wallet size={16} className="text-slate-300" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{BRL(totaisMotos.taxas + totaisMotos.diarias)}</div></CardContent>
+                </Card>
+            </div>
+
+            <Card>
+                <CardHeader><CardTitle>Detalhamento por Entregador</CardTitle></CardHeader>
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-slate-50">
+                            <TableHead>Entregador</TableHead>
+                            <TableHead className="text-center">Qtd. Entregas</TableHead>
+                            <TableHead className="text-right">Total Taxas</TableHead>
+                            <TableHead className="text-right">Diária</TableHead>
+                            <TableHead className="text-right">Total Geral</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {relatorioMotos.map((moto) => (
+                            <TableRow key={moto.id}>
+                                <TableCell className="font-medium">{moto.nome}</TableCell>
+                                <TableCell className="text-center">{moto.qtd}</TableCell>
+                                <TableCell className="text-right">{BRL(moto.taxas)}</TableCell>
+                                <TableCell className="text-right">{BRL(moto.diaria)}</TableCell>
+                                <TableCell className="text-right font-bold text-slate-900">{BRL(moto.taxas + moto.diaria)}</TableCell>
+                            </TableRow>
+                        ))}
+                        {relatorioMotos.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-400">Nenhuma entrega no período.</TableCell></TableRow>}
+                    </TableBody>
+                </Table>
+            </Card>
+        </div>
+      )}
+
+      {/* CONTEÚDO FINANCEIRO (COMPLETADO COM DADOS REAIS) */}
+      {activeTab === "financeiro" && (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="border-l-4 border-l-green-500">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-500">Entradas (Suprimentos)</CardTitle>
+                        <ArrowUpCircle size={16} className="text-green-500" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-green-700">+ {BRL(resumoCaixa.totalEntradasManuais)}</div></CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-red-500">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-500">Saídas (Sangrias)</CardTitle>
+                        <ArrowDownCircle size={16} className="text-red-500" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold text-red-700">- {BRL(resumoCaixa.totalSangrias)}</div></CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-yellow-500">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-xs font-medium text-slate-500">Quebra de Caixa</CardTitle>
+                        <AlertTriangle size={16} className="text-yellow-500" />
+                    </CardHeader>
+                    <CardContent><div className={`text-2xl font-bold ${resumoCaixa.totalQuebra < 0 ? 'text-red-600' : 'text-green-600'}`}>{BRL(resumoCaixa.totalQuebra)}</div></CardContent>
+                </Card>
+            </div>
+
+            <Card>
+                <CardHeader><CardTitle>Sessões de Caixa</CardTitle></CardHeader>
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-slate-50">
+                            <TableHead>Operador</TableHead>
+                            <TableHead>Abertura</TableHead>
+                            <TableHead>Fechamento</TableHead>
+                            <TableHead className="text-right">Saldo Inicial</TableHead>
+                            <TableHead className="text-right">Saldo Final</TableHead>
+                            <TableHead className="text-right">Diferença</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {listaSessoes.map((sessao) => (
+                            <TableRow key={sessao.id}>
+                                <TableCell className="font-medium">{sessao.usuarios?.nome || "Usuário"}</TableCell>
+                                <TableCell className="text-xs">{formatarData(sessao.aberto_em)}</TableCell>
+                                <TableCell className="text-xs">{sessao.fechado_em ? formatarData(sessao.fechado_em) : <Badge className="bg-green-500">Aberto</Badge>}</TableCell>
+                                <TableCell className="text-right">{BRL(Number(sessao.saldo_inicial))}</TableCell>
+                                <TableCell className="text-right">{BRL(Number(sessao.saldo_final))}</TableCell>
+                                <TableCell className={`text-right font-bold ${Number(sessao.quebra_de_caixa) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                    {sessao.fechado_em ? BRL(Number(sessao.quebra_de_caixa)) : "-"}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                        {listaSessoes.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-400">Nenhum caixa registrado no período.</TableCell></TableRow>}
+                    </TableBody>
+                </Table>
+            </Card>
+        </div>
+      )}
       
     </div>
   );

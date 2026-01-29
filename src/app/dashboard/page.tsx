@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react"; // Adicionado useRef
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase"; 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bell, Flame, Bike, CheckCircle, RefreshCw, Archive, Flag, Printer } from "lucide-react"; // Adicionado Printer
+import { Bell, Flame, Bike, CheckCircle, RefreshCw, Archive, Flag, Printer } from "lucide-react";
 
 export default function DashboardCozinha() {
   const router = useRouter();
@@ -17,55 +17,81 @@ export default function DashboardCozinha() {
   const [loading, setLoading] = useState(true);
   const [pizzariaId, setPizzariaId] = useState<string | null>(null);
 
-  // Referência para evitar múltiplas impressões automáticas do mesmo pedido
   const pedidosImpressos = useRef<Set<number>>(new Set());
-
-  // Controle do Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [pedidoSelecionado, setPedidoSelecionado] = useState<number | null>(null);
   const [motoboyEscolhido, setMotoboyEscolhido] = useState("");
 
-  // --- FUNÇÃO DE IMPRESSÃO TÉRMICA (80mm) ---
+  // --- NOVA FUNÇÃO DE IMPRESSÃO (INFALÍVEL) ---
   const imprimirPedido = useCallback((pedido: any) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
+    // 1. Abre uma nova janela em branco
+    const janelaImpressao = window.open('', '', 'width=300,height=600');
+    if (!janelaImpressao) return alert("Permita pop-ups para imprimir!");
 
+    // 2. Monta o HTML do cupom
     const itensHtml = pedido.items.map((item: any) => `
-        <tr>
-            <td style="vertical-align: top; padding: 2px;">${item.qtd}x</td>
-            <td style="vertical-align: top; padding: 2px;">${item.name}</td>
+        <tr style="border-bottom: 1px dashed #ccc;">
+            <td style="padding: 5px 0; font-weight: bold; width: 30px;">${item.qtd}x</td>
+            <td style="padding: 5px 0;">${item.name}</td>
         </tr>
     `).join('');
 
     const htmlContent = `
       <html>
-        <body style="font-family: 'Courier New', monospace; width: 80mm; font-size: 13px; margin: 0; padding: 10px;">
-          <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">
-            <b style="font-size: 16px;">COZINHA - #${pedido.id}</b><br/>
-            ${new Date().toLocaleString('pt-BR')}
+        <head>
+            <title>Pedido #${pedido.id}</title>
+            <style>
+                @page { margin: 0; }
+                body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 80mm; }
+                .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                .titulo { font-size: 16px; font-weight: bold; display: block; margin-bottom: 5px; }
+                .info { font-size: 11px; color: #333; }
+                table { width: 100%; border-collapse: collapse; }
+                .footer { border-top: 2px dashed #000; margin-top: 15px; padding-top: 10px; font-size: 13px; }
+                .tag { background: #000; color: #fff; padding: 2px 5px; font-weight: bold; border-radius: 3px; font-size: 10px; }
+            </style>
+        </head>
+        <body>
+          <div class="header">
+            <span class="titulo">COZINHA #${pedido.id}</span>
+            <span class="info">${new Date().toLocaleString('pt-BR')}</span>
           </div>
-          <table style="width: 100%; border-collapse: collapse;">
-            ${itensHtml}
+          
+          <table>
+            <tbody>
+                ${itensHtml}
+            </tbody>
           </table>
-          <div style="border-top: 1px dashed #000; margin-top: 10px; padding-top: 5px;">
-            <b>Cliente:</b> ${pedido.customer_name}<br/>
-            <b>Tipo:</b> ${pedido.status === 'producao' ? 'VENDA BALCÃO' : 'DELIVERY'}
+
+          <div class="footer">
+            <div style="margin-bottom: 5px;">
+                <b>Cliente:</b> ${pedido.customer_name}
+            </div>
+            <div>
+                <b>Tipo:</b> ${pedido.status === 'producao' ? '<span class="tag">BALCÃO</span>' : '<span class="tag">DELIVERY</span>'}
+            </div>
+             ${pedido.driver_name ? `<div style="margin-top:5px"><b>Motoboy:</b> ${pedido.driver_name}</div>` : ''}
           </div>
+          <script>
+            // 3. Manda imprimir assim que carregar e fecha a janela depois
+            window.onload = function() {
+                window.print();
+                setTimeout(function(){ window.close(); }, 500);
+            }
+          </script>
         </body>
       </html>
     `;
-    doc.open(); doc.write(htmlContent); doc.close();
-    iframe.onload = () => {
-      iframe.contentWindow?.print();
-      pedidosImpressos.current.add(pedido.id);
-      setTimeout(() => document.body.removeChild(iframe), 2000);
-    };
+
+    // 3. Escreve o conteúdo na janela e finaliza
+    janelaImpressao.document.write(htmlContent);
+    janelaImpressao.document.close(); // Importante para navegadores terminarem o carregamento
+    
+    // Marca como impresso para não imprimir 2x sozinho
+    pedidosImpressos.current.add(pedido.id);
+
   }, []);
 
-  // --- 0. VERIFICAÇÃO DE LOGIN ---
   useEffect(() => {
     const idSalvo = localStorage.getItem("pizzaria_id");
     if (!idSalvo) {
@@ -75,7 +101,6 @@ export default function DashboardCozinha() {
     }
   }, [router]);
 
-  // --- 1. CARREGAR DADOS ---
   const carregarDados = useCallback(async () => {
     if (!pizzariaId) return;
 
@@ -114,7 +139,6 @@ export default function DashboardCozinha() {
       })) : []
     }));
 
-    // LÓGICA DE AUTO-IMPRESSÃO PARA BALCÃO
     vendasFormatadas.forEach(p => {
       if (p.status === "producao" && !pedidosImpressos.current.has(p.id)) {
         imprimirPedido(p);
@@ -134,7 +158,6 @@ export default function DashboardCozinha() {
     }
   }, [pizzariaId, carregarDados]);
 
-  // --- 2. AÇÕES DO SISTEMA ---
   async function avancarStatus(id: number, statusAtual: string) {
     if (statusAtual === "Preparando" || statusAtual === "producao") {
         setPedidoSelecionado(id);
@@ -181,7 +204,6 @@ export default function DashboardCozinha() {
     }
   }
 
-  // Filtros das Colunas (Adicionado 'producao' no Forno)
   const novos = pedidos.filter(p => p.status === "Pendente");
   const preparando = pedidos.filter(p => p.status === "Preparando" || p.status === "producao");
   const entrega = pedidos.filter(p => p.status === "Em Rota");
@@ -198,12 +220,6 @@ export default function DashboardCozinha() {
           {loading && <RefreshCw className="animate-spin text-slate-400" size={20}/>}
         </h1>
         <div className="flex gap-4 items-center">
-            <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => {
-                localStorage.clear();
-                router.push("/");
-            }}>
-                Sair
-            </Button>
             <Button onClick={carregarDados} variant="outline" className="gap-2 bg-white">
                 <RefreshCw size={16} /> Atualizar
             </Button>
@@ -234,9 +250,14 @@ export default function DashboardCozinha() {
                         </div>
                     ))}
                   </div>
-                  <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, "Pendente")}>
-                    Preparar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
+                      <Printer size={14} />
+                    </Button>
+                    <Button size="sm" className="flex-1 bg-red-600 hover:bg-red-700 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, "Pendente")}>
+                        Preparar
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -270,7 +291,7 @@ export default function DashboardCozinha() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
                       <Printer size={14} />
                     </Button>
                     <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, pedido.status)}>
@@ -300,9 +321,15 @@ export default function DashboardCozinha() {
                 </CardHeader>
                 <CardContent className="p-3 pt-1">
                   <div className="text-sm font-medium text-slate-800 mb-2 truncate">{pedido.customer_name}</div>
-                  <Button size="sm" variant="outline" className="w-full border-green-200 text-green-700 hover:bg-green-50 shadow-sm" onClick={() => avancarStatus(pedido.id, "Em Rota")}>
-                    <CheckCircle size={14} className="mr-2" /> Entregue
-                  </Button>
+                  
+                  <div className="flex gap-2 mt-2">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
+                      <Printer size={14} />
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1 border-green-200 text-green-700 hover:bg-green-50 shadow-sm" onClick={() => avancarStatus(pedido.id, "Em Rota")}>
+                        <CheckCircle size={14} className="mr-2" /> Entregue
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -326,9 +353,14 @@ export default function DashboardCozinha() {
                   <div className="text-sm font-medium text-slate-600 mb-1 truncate">{pedido.customer_name}</div>
                   <div className="text-[10px] text-slate-400 mb-2">Entregue por: {pedido.driver_name || "Balcão"}</div>
                   
-                  <Button size="sm" variant="ghost" className="w-full h-7 text-xs text-slate-400 hover:text-red-500 hover:bg-red-50" onClick={() => arquivarPedido(pedido.id)}>
-                    <Archive size={12} className="mr-1" /> Arquivar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
+                      <Printer size={14} />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="flex-1 h-9 text-xs text-slate-400 hover:text-red-500 hover:bg-red-50" onClick={() => arquivarPedido(pedido.id)}>
+                        <Archive size={12} className="mr-1" /> Arquivar
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -337,7 +369,6 @@ export default function DashboardCozinha() {
 
       </div>
 
-      {/* --- MODAL --- */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>

@@ -1,126 +1,75 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { fazerLogin } from "@/lib/auth"; 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Pizza, Lock, Mail, Loader2, ArrowRight } from "lucide-react";
+import { Pizza, ArrowRight, CheckCircle2, LayoutDashboard, Utensils } from "lucide-react";
 
-export default function LoginPage() {
-  const router = useRouter();
-  
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState("");
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault(); 
-    setLoading(true);
-    setErro("");
-
-   
-    const resultado = await fazerLogin(email, senha);
-
-    if (resultado.sucesso) {
-      
-      if (resultado.usuario) {
-        localStorage.setItem("pizzaria_id", resultado.usuario.pizzaria_id.toString());
-        localStorage.setItem("usuario_id", resultado.usuario.id.toString()); 
-        localStorage.setItem("usuario_nome", resultado.usuario.nome);
-        localStorage.setItem("usuario_perfil", resultado.usuario.perfil);
-      }
-
-     
-      document.cookie = "pizzaria_token=logado; path=/; max-age=86400; SameSite=Lax";
-      
-      
-      router.push("/dashboard");
-    } else {
-      setErro(resultado.erro || "Ocorreu um erro inesperado.");
-    }
-    
-    setLoading(false);
-  }
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <Card className="w-full max-w-md bg-white border-slate-200 shadow-2xl animate-in fade-in zoom-in duration-500">
-        
-        <CardHeader className="text-center space-y-2 pb-6">
-          <div className="mx-auto bg-red-50 p-4 rounded-full w-fit mb-2 ring-1 ring-red-100">
-            <Pizza size={40} className="text-red-600" />
-          </div>
-          <CardTitle className="text-2xl font-bold text-slate-800">Pizza SaaS</CardTitle>
-          <CardDescription>Gerencie sua pizzaria com inteligência</CardDescription>
-        </CardHeader>
-        
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            
-            <div className="space-y-2">
-              <Label htmlFor="email">Email de Acesso</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
-                <Input 
-                  id="email"
-                  type="email" 
-                  className="pl-10"
-                  placeholder="admin@suapizzaria.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+    <div className="min-h-screen bg-slate-50">
+      {/* Navegação */}
+      <nav className="flex items-center justify-between p-6 bg-white border-b border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Pizza className="text-red-600" size={32} />
+          <span className="text-xl font-bold text-slate-800 tracking-tight">Pizza SaaS</span>
+        </div>
+        <div className="flex gap-4">
+          <Link href="/login">
+            <Button variant="ghost" className="text-slate-600">Entrar</Button>
+          </Link>
+          <Link href="/cadastro">
+            <Button className="bg-red-600 hover:bg-red-700 text-white">Criar Conta</Button>
+          </Link>
+        </div>
+      </nav>
 
-            <div className="space-y-2">
-              <Label htmlFor="senha">Senha</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
-                <Input 
-                  id="senha"
-                  type="password" 
-                  className="pl-10"
-                  placeholder="••••••"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+      {/* Hero Section */}
+      <main className="max-w-6xl mx-auto px-6 py-20 text-center">
+        <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 mb-6 leading-tight">
+          O sistema de gestão para <br />
+          <span className="text-red-600">Pizzarias Inteligentes</span>
+        </h1>
+        <p className="text-lg text-slate-600 mb-10 max-w-2xl mx-auto">
+          Controle seu estoque, pedidos, motoboys e tenha um cardápio digital moderno. 
+          Tudo o que você precisa para crescer em um só lugar.
+        </p>
 
-            {erro && (
-              <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md border border-red-100 flex items-center gap-2 animate-pulse">
-                ⚠️ {erro}
-              </div>
-            )}
-
-            <Button 
-              type="submit" 
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold h-11"
-              disabled={loading}
-            >
-              {loading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Entrando...</>
-              ) : (
-                <><span className="mr-2">Acessar Sistema</span> <ArrowRight size={16} /></>
-              )}
+        <div className="flex flex-col sm:flex-row justify-center gap-4 mb-16">
+          <Link href="/login">
+            <Button size="lg" className="bg-red-600 hover:bg-red-700 text-white px-8 h-14 text-lg gap-2">
+              Acessar meu Sistema <ArrowRight size={20} />
             </Button>
+          </Link>
+          <Link href="/cadastro">
+            <Button size="lg" variant="outline" className="border-slate-300 text-slate-700 px-8 h-14 text-lg">
+              Cadastrar Pizzaria
+            </Button>
+          </Link>
+        </div>
 
-          </form>
-        </CardContent>
-        
-        <CardFooter className="flex justify-center border-t p-4 bg-slate-50 rounded-b-xl">
-          <p className="text-xs text-slate-500">
-            Esqueceu a senha? Contate o suporte do sistema.
-          </p>
-        </CardFooter>
+        {/* Features Rápidas */}
+        <div className="grid md:grid-cols-3 gap-8 text-left mt-10">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <LayoutDashboard className="text-red-600 mb-4" size={30} />
+            <h3 className="font-bold text-lg mb-2">Painel de Controle</h3>
+            <p className="text-slate-500 text-sm">Visualize vendas e lucro em tempo real com gráficos intuitivos.</p>
+          </div>
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <Utensils className="text-red-600 mb-4" size={30} />
+            <h3 className="font-bold text-lg mb-2">Cardápio Digital</h3>
+            <p className="text-slate-500 text-sm">Seu cliente pede pelo celular e o pedido cai direto no seu caixa.</p>
+          </div>
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <CheckCircle2 className="text-red-600 mb-4" size={30} />
+            <h3 className="font-bold text-lg mb-2">Gestão de Motoboys</h3>
+            <p className="text-slate-500 text-sm">Organize entregas e pagamentos de forma automatizada.</p>
+          </div>
+        </div>
+      </main>
 
-      </Card>
+      <footer className="py-10 border-t border-slate-200 text-center text-slate-400 text-sm">
+        © 2026 Pizza SaaS - Todos os direitos reservados.
+      </footer>
     </div>
   );
 }

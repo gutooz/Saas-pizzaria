@@ -1,40 +1,50 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const ORIGEM = "Rua Evaristo da Silva 113, Quitauna, Osasco - SP";
+// Configuração do Supabase dentro da API
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   
-  // Agora pegamos os 3 pedaços separados
   const rua = searchParams.get("rua");
   const bairro = searchParams.get("bairro");
   const cidade = searchParams.get("cidade");
+  const pizzariaId = searchParams.get("pizzariaId"); // Pegamos o ID da pizzaria
 
-  if (!rua) {
-    return NextResponse.json({ error: "Rua não informada" }, { status: 400 });
+  if (!rua || !pizzariaId) {
+    return NextResponse.json({ error: "Dados insuficientes" }, { status: 400 });
   }
 
   try {
-    // 1. Pega coordenadas da PIZZARIA (Origem)
-    const urlOrigem = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(ORIGEM)}&limit=1`;
-    const resOrigem = await fetch(urlOrigem, { headers: { 'User-Agent': 'PizzaAdmin/1.0' } });
-    const dadosOrigem = await resOrigem.json();
+    // 1. Busca o endereço da PIZZARIA no banco de dados
+    const { data: loja } = await supabase
+      .from("loja_config")
+      .select("endereco")
+      .eq("id", pizzariaId)
+      .single();
 
-    if (!dadosOrigem[0]) throw new Error("Endereço da Pizzaria não encontrado.");
+    if (!loja) throw new Error("Pizzaria não encontrada.");
+
+    // 2. Coordenadas da Pizzaria (Origem)
+    const urlOrigem = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(loja.endereco)}&limit=1`;
+    const resOrigem = await fetch(urlOrigem, { headers: { 'User-Agent': 'PizzaSaaS/1.0' } });
+    const dadosOrigem = await resOrigem.json();
+    if (!dadosOrigem[0]) throw new Error("Endereço da Pizzaria não localizado no mapa.");
     const { lat: latOrigem, lon: lonOrigem } = dadosOrigem[0];
 
-    // 2. Monta a busca PRECISA do Cliente
-    // Ex: "Rua tal, Bairro tal, Osasco, Brasil"
-    const buscaCliente = `${rua}, ${bairro || ""}, ${cidade || "Osasco"}, Brasil`;
-    
+    // 3. Coordenadas do Cliente (Destino)
+    const buscaCliente = `${rua}, ${bairro || ""}, ${cidade || ""}, Brasil`;
     const urlCliente = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(buscaCliente)}&limit=1`;
-    const resCliente = await fetch(urlCliente, { headers: { 'User-Agent': 'PizzaAdmin/1.0' } });
+    const resCliente = await fetch(urlCliente, { headers: { 'User-Agent': 'PizzaSaaS/1.0' } });
     const dadosCliente = await resCliente.json();
-
-    if (!dadosCliente[0]) return NextResponse.json({ error: "Endereço não achado. Verifique o número." }, { status: 404 });
+    if (!dadosCliente[0]) return NextResponse.json({ error: "Endereço do cliente não encontrado." }, { status: 404 });
     const { lat: latCliente, lon: lonCliente } = dadosCliente[0];
 
-    // 3. Calcula a Rota
+    // 4. Calcula a Rota Real (OSRM)
     const urlRota = `http://router.project-osrm.org/route/v1/driving/${lonOrigem},${latOrigem};${lonCliente},${latCliente}?overview=false`;
     const resRota = await fetch(urlRota);
     const dadosRota = await resRota.json();
@@ -42,14 +52,13 @@ export async function GET(request: Request) {
     if (dadosRota.routes && dadosRota.routes.length > 0) {
       const metros = dadosRota.routes[0].distance;
       const km = (metros / 1000).toFixed(1);
-
-      return NextResponse.json({ distancia: km });
+      return NextResponse.json({ distancia: parseFloat(km) });
     } else {
-      throw new Error("Rota não encontrada.");
+      throw new Error("Não foi possível traçar uma rota entre os pontos.");
     }
 
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ error: "Erro no mapa." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Erro no cálculo de distância." }, { status: 500 });
   }
 }

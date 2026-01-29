@@ -2,37 +2,26 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // 1. Pega o caminho que o usuário está tentando acessar
   const path = request.nextUrl.pathname
-
-  // 2. Define quais caminhos são públicos (não precisam de senha)
-  // Adicione aqui suas rotas públicas, como login, cadastro, imagens, etc.
-  const isPublicPath = path === '/' || path === '/login' || path === '/cadastro'
-
-  // 3. Tenta pegar o "token" de autenticação nos cookies do navegador
-  // (Vamos chamar esse cookie de 'pizzaria_token' por enquanto)
   const token = request.cookies.get('pizzaria_token')?.value || ''
 
-  // 4. LÓGICA DE SEGURANÇA:
+  // 1. Rotas que NUNCA devem ser bloqueadas
+  const isPublicPath = path === '/' || path === '/login' || path.startsWith('/cadastro')
 
-  // Se o caminho NÃO for público (ou seja, é o /dashboard) E não tiver token...
-  if (!isPublicPath && !token) {
-    // ...Redireciona o intruso para a tela de login
-    return NextResponse.redirect(new URL('/', request.url))
+  // 2. Se o cara NÃO tem token e tenta entrar no dashboard, manda pro LOGIN (não pra home)
+  if (!token && !isPublicPath) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Se o usuário JÁ tem token e tenta acessar o login...
-  if (isPublicPath && token && path !== '/dashboard') {
-    // ...Joga ele direto pro dashboard (pra não ter que logar de novo)
+  // 3. Se o cara JÁ TEM token e tenta ir pro login ou home, manda pro DASHBOARD
+  if (token && isPublicPath) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
+
+  return NextResponse.next()
 }
 
-// 5. Configuração: Em quais rotas esse arquivo deve rodar?
+// O Matcher precisa ignorar arquivos internos do Next.js para não dar loop no CSS/JS
 export const config = {
-  matcher: [
-    '/', 
-    '/login',
-    '/dashboard/:path*', // O :path* significa "qualquer coisa depois de dashboard"
-  ]
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|public).*)'],
 }
