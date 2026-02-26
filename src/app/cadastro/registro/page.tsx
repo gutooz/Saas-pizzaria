@@ -1,4 +1,5 @@
 "use client";
+
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Pizza, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 
-export default function RegistroPage() {
+// 1. Criamos um componente interno para o formulário
+function FormularioRegistro() {
   const searchParams = useSearchParams();
   const plano = searchParams.get("plano") || "bronze";
 
@@ -38,5 +41,18 @@ export default function RegistroPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// 2. O componente principal exporta o formulário dentro de um Suspense
+export default function RegistroPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-500 font-medium animate-pulse">Carregando formulário...</p>
+      </div>
+    }>
+      <FormularioRegistro />
+    </Suspense>
   );
 }
