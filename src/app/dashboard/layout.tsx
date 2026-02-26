@@ -14,11 +14,13 @@ import {
   Settings, 
   LogOut,
   Pizza,
-  Menu, // <--- Novo ícone para Mobile
-  X     // <--- Novo ícone para fechar menu
+  Menu, 
+  X,
+  Bot // <--- Ícone do robô adicionado
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+// --- LISTA DE MENUS ATUALIZADA ---
 const navigation = [
   { name: 'Cozinha', href: '/dashboard', icon: LayoutDashboard },
   { name: 'PDV', href: '/dashboard/caixa', icon: ShoppingCart },
@@ -27,6 +29,7 @@ const navigation = [
   { name: 'Entregadores', href: '/dashboard/motoboys', icon: Bike },
   { name: 'Clientes', href: '/dashboard/clientes', icon: Users },
   { name: 'Relatórios', href: '/dashboard/relatorios', icon: BarChart3 },
+  { name: 'Agente IA', href: '/dashboard/agente-ia', icon: Bot }, // <--- Novo Menu Adicionado
   { name: 'Configurações', href: '/dashboard/configuracoes', icon: Settings },
 ];
 
@@ -39,16 +42,13 @@ export default function DashboardLayout({
   const router = useRouter();
   
   const [nomeLoja, setNomeLoja] = useState("Pizza Admin");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // <--- Estado do Menu Mobile
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
 
   useEffect(() => {
-    // 1. Tenta pegar do Cache Local primeiro (Instantâneo)
-    const nomeSalvo = localStorage.getItem("usuario_nome"); // Ou nome da pizzaria se salvou
+    const nomeSalvo = localStorage.getItem("usuario_nome"); 
     if (nomeSalvo) setNomeLoja(nomeSalvo);
 
-    // 2. Busca do banco para garantir que está atualizado
     async function fetchLoja() {
-        // Se você tiver a tabela loja_config:
         const { data } = await supabase.from("loja_config").select("nome_loja").limit(1).single();
         if (data) setNomeLoja(data.nome_loja);
     }
@@ -56,15 +56,9 @@ export default function DashboardLayout({
   }, []);
 
   async function handleLogout() {
-    // 1. Limpa o Supabase
     await supabase.auth.signOut();
-    
-    // 2. Limpa o LocalStorage
     localStorage.clear();
-
-    // 3. MATAR O COOKIE DO MIDDLEWARE (Muito Importante!)
     document.cookie = "pizzaria_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-
     router.push("/");
   }
 
@@ -72,7 +66,6 @@ export default function DashboardLayout({
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       
       {/* --- MENU MOBILE (OVERLAY) --- */}
-      {/* Só aparece quando isMobileMenuOpen é true */}
       <div className={`fixed inset-0 z-50 bg-slate-900/50 md:hidden transition-opacity ${isMobileMenuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setIsMobileMenuOpen(false)}></div>
       
       <aside className={`
@@ -81,14 +74,13 @@ export default function DashboardLayout({
       `}>
         
         {/* Cabeçalho do Sidebar */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-white">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-white shrink-0">
           <div className="flex items-center">
             <Pizza className="text-red-600 mr-2" />
             <h1 className="text-lg font-extrabold text-slate-900 truncate w-32" title={nomeLoja}>
               {nomeLoja}
             </h1>
           </div>
-          {/* Botão fechar no mobile */}
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-500">
             <X size={24} />
           </button>
@@ -102,7 +94,7 @@ export default function DashboardLayout({
               <Link
                 key={item.name}
                 href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)} // Fecha o menu ao clicar no link (mobile)
+                onClick={() => setIsMobileMenuOpen(false)} 
                 className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-all ${
                   isActive
                     ? "bg-red-50 text-red-600 shadow-sm"
@@ -117,7 +109,7 @@ export default function DashboardLayout({
         </nav>
 
         {/* Footer do Sidebar */}
-        <div className="p-4 border-t border-slate-100 bg-white">
+        <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           <button 
             onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 w-full transition-colors"
@@ -131,7 +123,7 @@ export default function DashboardLayout({
       {/* --- CONTEÚDO PRINCIPAL --- */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         
-        {/* Barra de Topo Mobile (Só aparece em telas pequenas) */}
+        {/* Barra de Topo Mobile */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center px-4 md:hidden justify-between shrink-0">
              <div className="flex items-center font-bold text-slate-800 gap-2">
                 <Pizza className="text-red-600" size={20}/>
@@ -142,7 +134,7 @@ export default function DashboardLayout({
              </button>
         </header>
 
-        {/* Área onde as páginas (children) são renderizadas */}
+        {/* Área onde as páginas são renderizadas */}
         <main className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-8">
           {children}
         </main>

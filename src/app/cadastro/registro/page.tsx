@@ -23,7 +23,7 @@ export default function RegistroPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Nome da Pizzaria</Label>
+            <Label>Nome do Delivery</Label>
             <Input placeholder="Ex: Bella Pizza" />
           </div>
           <div className="space-y-2">

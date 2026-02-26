@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase"; 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,7 +47,7 @@ export default function CaixaPage() {
   // Busca de Produtos
   const [buscaProduto, setBuscaProduto] = useState("");
   
-  // Busca de Clientes (NOVA LÓGICA MANUAL)
+  // Busca de Clientes
   const [termoBuscaCliente, setTermoBuscaCliente] = useState("");
   
   const [formaPagamento, setFormaPagamento] = useState("Pix");
@@ -61,10 +61,8 @@ export default function CaixaPage() {
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // Normalizador de texto (ignora maiúsculas, minúsculas e acentos)
   const normalize = (str: string) => str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
 
-  // 1. CARREGAR DADOS
   useEffect(() => {
     async function carregarDadosIniciais() {
       setLoadingSistema(true);
@@ -104,19 +102,16 @@ export default function CaixaPage() {
             .eq("pizzaria_id", pizzariaId)
             .order("name");
         
-        console.log("Clientes do Banco:", cli); // Debug
         setClientes(cli || []);
 
         const { data: config } = await supabase.from("loja_config").select("*").eq("id", pizzariaId).single();
         if (config) {
           setTaxaBase(Number(config.taxa_entrega_padrao));
           setLojaConfig(config);
-          
           if (config.ordem_categorias && Array.isArray(config.ordem_categorias) && config.ordem_categorias.length > 0) {
              setCategoriasAbas(config.ordem_categorias);
           }
         }
-
       } catch (err) {
         console.error("Erro no carregamento:", err);
       } finally {
@@ -160,6 +155,7 @@ export default function CaixaPage() {
         fechado_em: new Date().toISOString()
     }).eq("id", sessao.id);
     if (!error) {
+        // CORREÇÃO DA LINHA 163 AQUI:
         alert(`Caixa Fechado! \nQuebra de Caixa: R$ ${quebra.toFixed(2)}`);
         setSessao(null);
         setMovimentacoes([]);
@@ -278,11 +274,9 @@ export default function CaixaPage() {
   async function finalizarPedido() {
     if (carrinho.length === 0) return alert("Carrinho vazio!");
     setProcessando(true);
-
     let nomeCliente = "Cliente Balcão";
     let enderecoCliente = "";
     let telefoneCliente = "";
-
     if (clienteSelecionado && clienteSelecionado !== "balcao") {
       const cli = clientes.find(c => c.id.toString() === clienteSelecionado);
       if (cli) {
@@ -296,14 +290,12 @@ export default function CaixaPage() {
           enderecoCliente = partes.join(", ");
       }
     }
-
     const itensParaEnviar = carrinho.map(item => ({
       id: item.isCustom ? null : item.id,
       quantidade: item.qtd,
       preco: item.precoNumerico,
       obs: item.isCustom ? item.nome : "" 
     }));
-
     try {
       const { data, error } = await supabase.rpc("finalizar_venda", {
         itens_json: itensParaEnviar,
@@ -315,9 +307,7 @@ export default function CaixaPage() {
         metodo_pgto: formaPagamento,
         pizzaria_id_param: Number(sessao.pizzaria_id)
       });
-
       if (error) throw error;
-
       await supabase.from("caixa_movimentacoes").insert({
           pizzaria_id: sessao.pizzaria_id,
           sessao_id: sessao.id,
@@ -325,9 +315,7 @@ export default function CaixaPage() {
           valor: totalFinal,
           descricao: `Venda PDV - ${formaPagamento}`
       });
-      
       carregarMovimentacoes(sessao.id);
-
       imprimirCupom({
         id: data?.venda_id || "000",
         data: new Date().toLocaleString("pt-BR"),
@@ -340,10 +328,8 @@ export default function CaixaPage() {
         total: totalFinal,
         pagamento: formaPagamento
       });
-      
       setCarrinho([]); setClienteSelecionado(""); setFormaPagamento("Pix"); setKmEntrega(0); setTaxaEntrega(0);
       alert("Pedido finalizado!");
-
     } catch (error: any) {
       alert("Erro ao processar: " + error.message);
     } finally {
@@ -351,19 +337,17 @@ export default function CaixaPage() {
     }
   }
 
-  // --- FILTROS INTELIGENTES ---
   const produtosFiltrados = cardapio.filter(p => normalize(p.nome).includes(normalize(buscaProduto)));
   const getProdutosPorCategoria = (catNome: string) => produtosFiltrados.filter(p => normalize(p.categoria) === normalize(catNome));
   const listaPizzasParaMontar = cardapio.filter(p => normalize(p.categoria) === 'pizza');
   const listaBrotosParaMontar = cardapio.filter(p => normalize(p.categoria) === 'broto');
 
-  // --- LÓGICA DE FILTRO DE CLIENTE MANUAL E ROBUSTA ---
   const clientesFiltrados = useMemo(() => {
       const termo = normalize(termoBuscaCliente);
       if (!termo) return clientes;
       return clientes.filter(c => {
           const nome = normalize(c.name);
-          const telefone = c.phone ? c.phone.replace(/\D/g, "") : ""; // Remove parenteses e traços
+          const telefone = c.phone ? c.phone.replace(/\D/g, "") : "";
           return nome.includes(termo) || telefone.includes(termo);
       });
   }, [clientes, termoBuscaCliente]);
@@ -398,9 +382,7 @@ export default function CaixaPage() {
         <Dialog open={modalCaixaOpen} onOpenChange={setModalCaixaOpen}>
           <DialogTrigger asChild><Button variant="outline"><Wallet className="mr-2" size={16}/> Gerenciar</Button></DialogTrigger>
           <DialogContent className="max-w-2xl">
-            <DialogHeader>
-                <DialogTitle>Gerenciamento de Caixa</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Gerenciamento de Caixa</DialogTitle></DialogHeader>
             <Tabs defaultValue="acoes">
               <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="acoes">Movimentos</TabsTrigger><TabsTrigger value="extrato">Extrato</TabsTrigger></TabsList>
               <TabsContent value="acoes" className="grid grid-cols-2 gap-4 mt-4">
@@ -467,8 +449,6 @@ export default function CaixaPage() {
         <div className="w-96 bg-white border rounded-xl shadow-xl flex flex-col overflow-hidden">
           <div className="p-4 bg-slate-50 border-b space-y-3">
             <h2 className="font-bold flex items-center gap-2"><ShoppingCart size={18}/> Pedido Atual</h2>
-            
-            {/* SELETOR DE CLIENTE MANUAL E INFALÍVEL */}
             <Popover open={openCliente} onOpenChange={setOpenCliente}>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="w-full justify-between h-9 text-sm">
@@ -480,49 +460,19 @@ export default function CaixaPage() {
                 <div className="space-y-2">
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 text-slate-400" size={14} />
-                        <Input 
-                            placeholder="Buscar nome ou telefone..." 
-                            value={termoBuscaCliente}
-                            onChange={(e) => setTermoBuscaCliente(e.target.value)}
-                            className="pl-8 h-9 text-sm"
-                            autoFocus
-                        />
-                        {termoBuscaCliente && (
-                            <button onClick={() => setTermoBuscaCliente("")} className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500">
-                                <X size={14}/>
-                            </button>
-                        )}
+                        <Input placeholder="Buscar nome ou telefone..." value={termoBuscaCliente} onChange={(e) => setTermoBuscaCliente(e.target.value)} className="pl-8 h-9 text-sm" autoFocus />
+                        {termoBuscaCliente && (<button onClick={() => setTermoBuscaCliente("")} className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500"><X size={14}/></button>)}
                     </div>
-                    
                     <div className="max-h-[250px] overflow-y-auto space-y-1 pr-1">
-                        <div 
-                            className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 flex items-center gap-2"
-                            onClick={() => { setClienteSelecionado("balcao"); setOpenCliente(false); }}
-                        >
-                            <User size={14}/> Cliente Balcão
-                        </div>
-                        {clientesFiltrados.length === 0 ? (
-                            <div className="text-center text-xs text-slate-400 py-4">Nenhum cliente encontrado</div>
-                        ) : (
-                            clientesFiltrados.map(c => (
-                                <div 
-                                    key={c.id} 
-                                    className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 border-b border-slate-50 last:border-0"
-                                    onClick={() => { setClienteSelecionado(c.id.toString()); setOpenCliente(false); }}
-                                >
-                                    <div className="font-bold text-slate-700">{c.name}</div>
-                                    <div className="text-xs text-slate-400 flex items-center gap-1"><Phone size={10}/> {c.phone || "Sem telefone"}</div>
-                                </div>
-                            ))
+                        <div className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 flex items-center gap-2" onClick={() => { setClienteSelecionado("balcao"); setOpenCliente(false); }}><User size={14}/> Cliente Balcão</div>
+                        {clientesFiltrados.length === 0 ? (<div className="text-center text-xs text-slate-400 py-4">Nenhum cliente encontrado</div>) : (
+                            clientesFiltrados.map(c => (<div key={c.id} className="p-2 text-sm rounded cursor-pointer hover:bg-slate-100 border-b border-slate-50 last:border-0" onClick={() => { setClienteSelecionado(c.id.toString()); setOpenCliente(false); }}><div className="font-bold text-slate-700">{c.name}</div><div className="text-xs text-slate-400 flex items-center gap-1"><Phone size={10}/> {c.phone || "Sem telefone"}</div></div>))
                         )}
                     </div>
-                    <div className="text-[10px] text-center text-slate-300 border-t pt-1">
-                        Exibindo {clientesFiltrados.length} de {clientes.length} clientes
-                    </div>
+                    <div className="text-[10px] text-center text-slate-300 border-t pt-1">Exibindo {clientesFiltrados.length} de {clientes.length} clientes</div>
                 </div>
               </PopoverContent>
             </Popover>
-
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
             {carrinho.map((item, index) => (<div key={index} className="flex justify-between items-center text-sm border-b pb-1"><div><b>{item.qtd}x</b> {item.nome}</div><div className="flex items-center gap-2"><b>R$ {(item.precoNumerico*item.qtd).toFixed(2)}</b><button onClick={() => removerDoCarrinho(index)} className="text-red-400"><Trash2 size={12}/></button></div></div>))}

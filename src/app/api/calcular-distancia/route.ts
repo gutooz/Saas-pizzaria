@@ -10,13 +10,12 @@ const supabase = createClient(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   
-  const rua = searchParams.get("rua");
-  const bairro = searchParams.get("bairro");
-  const cidade = searchParams.get("cidade");
-  const pizzariaId = searchParams.get("pizzariaId"); // Pegamos o ID da pizzaria
+  // O frontend agora envia o endereço montado (Rua, Número, Bairro, Cidade) no parâmetro "rua"
+  const enderecoCompleto = searchParams.get("rua");
+  const pizzariaId = searchParams.get("pizzariaId");
 
-  if (!rua || !pizzariaId) {
-    return NextResponse.json({ error: "Dados insuficientes" }, { status: 400 });
+  if (!enderecoCompleto || !pizzariaId) {
+    return NextResponse.json({ error: "Dados insuficientes (Endereço ou ID da Pizzaria)" }, { status: 400 });
   }
 
   try {
@@ -27,21 +26,28 @@ export async function GET(request: Request) {
       .eq("id", pizzariaId)
       .single();
 
-    if (!loja) throw new Error("Pizzaria não encontrada.");
+    if (!loja || !loja.endereco) throw new Error("Pizzaria não encontrada ou sem endereço.");
 
     // 2. Coordenadas da Pizzaria (Origem)
     const urlOrigem = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(loja.endereco)}&limit=1`;
-    const resOrigem = await fetch(urlOrigem, { headers: { 'User-Agent': 'PizzaSaaS/1.0' } });
+    const resOrigem = await fetch(urlOrigem, { headers: { 'User-Agent': 'GestorPro/1.0' } });
     const dadosOrigem = await resOrigem.json();
-    if (!dadosOrigem[0]) throw new Error("Endereço da Pizzaria não localizado no mapa.");
+    
+    if (!dadosOrigem || dadosOrigem.length === 0) {
+        throw new Error("Endereço da Pizzaria não localizado no mapa.");
+    }
     const { lat: latOrigem, lon: lonOrigem } = dadosOrigem[0];
 
     // 3. Coordenadas do Cliente (Destino)
-    const buscaCliente = `${rua}, ${bairro || ""}, ${cidade || ""}, Brasil`;
+    // Adicionamos ", Brasil" para garantir que a API não busque em outro país
+    const buscaCliente = `${enderecoCompleto}, Brasil`;
     const urlCliente = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(buscaCliente)}&limit=1`;
-    const resCliente = await fetch(urlCliente, { headers: { 'User-Agent': 'PizzaSaaS/1.0' } });
+    const resCliente = await fetch(urlCliente, { headers: { 'User-Agent': 'GestorPro/1.0' } });
     const dadosCliente = await resCliente.json();
-    if (!dadosCliente[0]) return NextResponse.json({ error: "Endereço do cliente não encontrado." }, { status: 404 });
+    
+    if (!dadosCliente || dadosCliente.length === 0) {
+        return NextResponse.json({ error: "Endereço do cliente não encontrado." }, { status: 404 });
+    }
     const { lat: latCliente, lon: lonCliente } = dadosCliente[0];
 
     // 4. Calcula a Rota Real (OSRM)
@@ -58,7 +64,7 @@ export async function GET(request: Request) {
     }
 
   } catch (error: any) {
-    console.error(error);
+    console.error("Erro na API de distância:", error);
     return NextResponse.json({ error: error.message || "Erro no cálculo de distância." }, { status: 500 });
   }
 }

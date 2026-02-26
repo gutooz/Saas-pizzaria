@@ -22,58 +22,82 @@ export default function DashboardCozinha() {
   const [pedidoSelecionado, setPedidoSelecionado] = useState<number | null>(null);
   const [motoboyEscolhido, setMotoboyEscolhido] = useState("");
 
-  // --- NOVA FUNÇÃO DE IMPRESSÃO (INFALÍVEL) ---
+  // --- FUNÇÃO DE IMPRESSÃO ATUALIZADA (COM ENDEREÇO E PAGAMENTO) ---
   const imprimirPedido = useCallback((pedido: any) => {
-    // 1. Abre uma nova janela em branco
     const janelaImpressao = window.open('', '', 'width=300,height=600');
     if (!janelaImpressao) return alert("Permita pop-ups para imprimir!");
 
-    // 2. Monta o HTML do cupom
+    // Monta o HTML dos itens com a observação (para casos de Meio a Meio ou sem cebola)
     const itensHtml = pedido.items.map((item: any) => `
-        <tr style="border-bottom: 1px dashed #ccc;">
-            <td style="padding: 5px 0; font-weight: bold; width: 30px;">${item.qtd}x</td>
-            <td style="padding: 5px 0;">${item.name}</td>
-        </tr>
+        <div style="border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-bottom: 5px;">
+            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
+                <span>${item.qtd}x ${item.name}</span>
+                <span>R$ ${Number(item.preco || 0).toFixed(2)}</span>
+            </div>
+            ${item.obs && item.obs !== item.name ? `<div style="font-size: 11px; margin-top: 2px;">OBS: ${item.obs}</div>` : ''}
+        </div>
     `).join('');
 
+    // HTML do Cupom (80mm) com as informações do cliente
     const htmlContent = `
       <html>
         <head>
-            <title>Pedido #${pedido.id}</title>
+            <title>Comanda #${pedido.id}</title>
             <style>
                 @page { margin: 0; }
-                body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 80mm; }
-                .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-                .titulo { font-size: 16px; font-weight: bold; display: block; margin-bottom: 5px; }
+                body { font-family: 'Courier New', Courier, monospace; font-size: 12px; margin: 0; padding: 10px; width: 80mm; color: black; }
+                .center { text-align: center; }
+                .bold { font-weight: bold; }
+                .header { border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; text-align: center; }
+                .titulo { font-size: 18px; font-weight: bold; display: block; margin-bottom: 5px; }
                 .info { font-size: 11px; color: #333; }
-                table { width: 100%; border-collapse: collapse; }
-                .footer { border-top: 2px dashed #000; margin-top: 15px; padding-top: 10px; font-size: 13px; }
-                .tag { background: #000; color: #fff; padding: 2px 5px; font-weight: bold; border-radius: 3px; font-size: 10px; }
+                .section { border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                .tag { background: #000; color: #fff; padding: 2px 5px; font-weight: bold; border-radius: 3px; font-size: 10px; display: inline-block; margin-top: 3px; }
+                .total-box { margin-top: 10px; font-size: 14px; }
             </style>
         </head>
         <body>
           <div class="header">
-            <span class="titulo">COZINHA #${pedido.id}</span>
-            <span class="info">${new Date().toLocaleString('pt-BR')}</span>
+            <span class="titulo">COMANDA #${pedido.id}</span>
+            <span class="info">${new Date(pedido.created_at).toLocaleString('pt-BR')}</span>
           </div>
           
-          <table>
-            <tbody>
-                ${itensHtml}
-            </tbody>
-          </table>
-
-          <div class="footer">
-            <div style="margin-bottom: 5px;">
-                <b>Cliente:</b> ${pedido.customer_name}
-            </div>
-            <div>
-                <b>Tipo:</b> ${pedido.status === 'producao' ? '<span class="tag">BALCÃO</span>' : '<span class="tag">DELIVERY</span>'}
-            </div>
-             ${pedido.driver_name ? `<div style="margin-top:5px"><b>Motoboy:</b> ${pedido.driver_name}</div>` : ''}
+          <div class="section">
+            <div class="bold" style="font-size: 14px;">CLIENTE: ${pedido.customer_name}</div>
+            <div style="font-size: 13px; margin-top: 3px;">Tel: ${pedido.telefone || 'Não informado'}</div>
+            
+            ${pedido.status_original === 'producao' 
+                ? '<div class="tag" style="background: green; margin-top: 5px;">RETIRADA NO BALCÃO</div>'
+                : `
+                <div class="bold" style="font-size: 13px; margin-top: 8px; background: black; color: white; padding: 3px; display: inline-block;">ENDEREÇO:</div>
+                <div class="bold" style="font-size: 13px; margin-top: 5px;">${pedido.endereco || 'Endereço não informado'}</div>
+                `
+            }
           </div>
+
+          <div class="section">
+            <div class="center bold" style="font-size: 15px; margin-bottom: 10px;">--- ITENS ---</div>
+            ${itensHtml}
+          </div>
+
+          <div class="total-box">
+            <div style="display: flex; justify-content: space-between;">
+              <span>Taxa Entrega:</span>
+              <span>R$ ${Number(pedido.taxa_entrega || 0).toFixed(2)}</span>
+            </div>
+            <div class="bold" style="display: flex; justify-content: space-between; font-size: 16px; margin-top: 5px;">
+              <span>TOTAL:</span>
+              <span>R$ ${Number(pedido.total || 0).toFixed(2)}</span>
+            </div>
+            <div class="bold" style="margin-top: 8px; font-size: 13px; border: 1px solid black; padding: 4px; text-align: center;">
+              Pgto: ${pedido.pagamento || 'Não informado'}
+            </div>
+            ${pedido.driver_name ? `<div style="margin-top:5px; text-align:center; font-size: 11px;"><b>Motoboy:</b> ${pedido.driver_name}</div>` : ''}
+          </div>
+
+          <div style="text-align:center; margin-top: 20px; font-size: 10px;">.</div>
+
           <script>
-            // 3. Manda imprimir assim que carregar e fecha a janela depois
             window.onload = function() {
                 window.print();
                 setTimeout(function(){ window.close(); }, 500);
@@ -83,11 +107,9 @@ export default function DashboardCozinha() {
       </html>
     `;
 
-    // 3. Escreve o conteúdo na janela e finaliza
     janelaImpressao.document.write(htmlContent);
-    janelaImpressao.document.close(); // Importante para navegadores terminarem o carregamento
+    janelaImpressao.document.close(); 
     
-    // Marca como impresso para não imprimir 2x sozinho
     pedidosImpressos.current.add(pedido.id);
 
   }, []);
@@ -104,6 +126,7 @@ export default function DashboardCozinha() {
   const carregarDados = useCallback(async () => {
     if (!pizzariaId) return;
 
+    // A busca agora traz TODOS os campos necessários da venda principal
     const { data: dataVendas, error: errorVendas } = await supabase
       .from("vendas")
       .select(`
@@ -111,6 +134,7 @@ export default function DashboardCozinha() {
         itens_venda (
           quantidade,
           preco_unitario,
+          observacao,
           cardapio ( nome )
         )
       `)
@@ -127,20 +151,52 @@ export default function DashboardCozinha() {
       .select("*")
       .eq("status", "Ativo");
 
-    const vendasFormatadas = (dataVendas || []).map((v: any) => ({
-      id: v.id,
-      customer_name: v.cliente_nome || v.cliente || "Cliente Balcão",
-      created_at: v.created_at,
-      status: v.status || "Pendente",
-      driver_name: v.driver_name,
-      items: v.itens_venda ? v.itens_venda.map((item: any) => ({
-        qtd: item.quantidade,
-        name: item.cardapio?.nome || "Item personalizado"
-      })) : []
-    }));
+    // Formatando os dados da venda para o padrão que a tela e a impressora precisam
+    const vendasFormatadas = (dataVendas || []).map((v: any) => {
+        // Trata os itens dependendo de como eles estão salvos no banco
+        // Se estiver em JSON na coluna 'itens_json' (Cardápio Digital)
+        let itensParsed = [];
+        if (v.itens_json) {
+            if (typeof v.itens_json === 'string') {
+                try { itensParsed = JSON.parse(v.itens_json); } catch(e) {}
+            } else {
+                itensParsed = v.itens_json;
+            }
+        } 
+        // Se vier da tabela relacionada (PDV antigo)
+        else if (v.itens_venda && v.itens_venda.length > 0) {
+            itensParsed = v.itens_venda.map((item: any) => ({
+                quantidade: item.quantidade,
+                nome: item.cardapio?.nome || "Item",
+                preco: item.preco_unitario,
+                obs: item.observacao
+            }));
+        }
 
+        return {
+          id: v.id,
+          customer_name: v.cliente_nome || v.cliente || "Cliente Balcão",
+          telefone: v.cliente_telefone || "",
+          endereco: v.endereco_entrega || "",
+          pagamento: v.metodo_pgto || "",
+          total: v.total_venda || 0,
+          taxa_entrega: v.taxa_entrega_valor || 0,
+          created_at: v.created_at,
+          status_original: v.status, // Guarda o status real para saber se é produção(balcão)
+          status: v.status || "Pendente",
+          driver_name: v.driver_name,
+          items: itensParsed.map((item: any) => ({
+            qtd: item.quantidade || item.qtd || 1,
+            name: item.nome,
+            preco: item.preco || 0,
+            obs: item.obs || ""
+          }))
+        };
+    });
+
+    // Impressão automática apenas para novos pedidos de balcão (status producao)
     vendasFormatadas.forEach(p => {
-      if (p.status === "producao" && !pedidosImpressos.current.has(p.id)) {
+      if (p.status_original === "producao" && !pedidosImpressos.current.has(p.id)) {
         imprimirPedido(p);
       }
     });
@@ -151,11 +207,40 @@ export default function DashboardCozinha() {
   }, [pizzariaId, imprimirPedido]);
 
   useEffect(() => {
-    if (pizzariaId) {
-      carregarDados();
-      const intervalo = setInterval(carregarDados, 5000);
-      return () => clearInterval(intervalo);
-    }
+    if (!pizzariaId) return;
+
+    // Carrega os dados na primeira vez
+    carregarDados();
+    
+    // Fallback de segurança atualiza a tela a cada 10 segundos
+    const intervalo = setInterval(carregarDados, 10000);
+
+    // ESCUTADOR EM TEMPO REAL (Dispara o som na hora)
+    const channel = supabase
+      .channel('notificacao_cozinha')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'vendas', filter: `pizzaria_id=eq.${pizzariaId}` },
+        (payload) => {
+          // Tenta tocar o som
+          try {
+            const audio = new Audio('/som-pedido.mp3');
+            audio.play().catch(err => {
+              console.warn("Navegador bloqueou o som automático. É preciso clicar na tela pelo menos uma vez.");
+            });
+          } catch(e) {}
+
+          // Atualiza a lista de pedidos na tela imediatamente
+          carregarDados();
+        }
+      )
+      .subscribe();
+
+    // Limpeza ao sair da página
+    return () => {
+      clearInterval(intervalo);
+      supabase.removeChannel(channel);
+    };
   }, [pizzariaId, carregarDados]);
 
   async function avancarStatus(id: number, statusAtual: string) {
@@ -251,7 +336,7 @@ export default function DashboardCozinha() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir Comanda">
                       <Printer size={14} />
                     </Button>
                     <Button size="sm" className="flex-1 bg-red-600 hover:bg-red-700 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, "Pendente")}>
@@ -291,7 +376,7 @@ export default function DashboardCozinha() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir">
+                    <Button variant="outline" size="sm" onClick={() => imprimirPedido(pedido)} className="bg-white border-slate-200" title="Imprimir Comanda">
                       <Printer size={14} />
                     </Button>
                     <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white shadow-sm" onClick={() => avancarStatus(pedido.id, pedido.status)}>
